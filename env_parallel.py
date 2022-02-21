@@ -8,7 +8,10 @@ class Env:
         self.device = device
         self.customers = torch.zeros((1, self.candidates), device = device)
         self.distances = torch.zeros((1, self.candidates, self.candidates), device = device)
-        self.states = torch.zeros((self.count_of_envs, self.candidates), device = device)
+        
+        #two matrices - first is distance matrix and second is if "sklad" is built
+        self.states = torch.zeros((self.count_of_envs, 2, self.candidates, self.candidates), device = device)
+        self.built = torch.zeros((self.count_of_envs, self.candidates), device = device)
         self.current_step = 0
         self.order = torch.arange(count_of_envs, device = device) * candidates
         self.prev_obj = torch.zeros((self.count_of_envs))
@@ -21,6 +24,7 @@ class Env:
             values = lines[i].split(';')
             for j in range(candidates):
                 self.distances[0, i, j] = float(values[j])
+                self.states[:, 0, i, j] = float(values[j])
 
         f = open(path + '/C.txt', "r")
         lines = f.read().split('\n')
@@ -33,19 +37,21 @@ class Env:
         #self.distances = self.distances.repeat(self.count_of_envs, 1, 1)
 
     def reset(self):
-        self.states = torch.zeros((self.count_of_envs, self.candidates), device = self.device)
+        self.built = torch.zeros((self.count_of_envs, self.candidates))
+        self.states[:, 1, :, :] = 0
         self.prev_obj = torch.zeros((self.count_of_envs), device=self.device)
         self.current_step = 0
-        return self.states.clone()
+        
+        return self.states.clone(), (1 - self.built.clone()).abs()
 
     def compute_objective_function(self):
         if self.current_step == 0:
             return 0
 
         objective_values = torch.zeros((self.count_of_envs))
-        states_cpu = self.states.cpu()
+        built_cpu = self.built.cpu()
         for i in range(self.count_of_envs):
-            placements = torch.nonzero(states_cpu[i]).squeeze(1)
+            placements = torch.nonzero(built_cpu[i]).squeeze(1)
             mins = torch.min(self.distances.index_select(1, placements), 1)
             sum = (mins.values * self.customers).sum()
             objective_values[i] = sum.item()
@@ -53,27 +59,21 @@ class Env:
         return objective_values.to(self.device)
 
     def step(self, actions):
-        self.states = self.states.view(-1)
+        self.built = self.built.view(-1)
         indices = self.order + actions.view(-1)
-        self.states[indices] = 1
-        self.states = self.states.view(-1, self.candidates)
+        self.built[indices] = 1
+        self.built = self.built.view(-1, self.candidates)
+
+        for i in range(len(actions)):
+            self.states[i, 1, :, actions[i]] = 1
+            self.states[i, 1, actions[i], :] = 1
+            
         self.current_step += 1
         terminal = self.current_step == self.P
         
-        # obj = self.compute_objective_function()
-
-        # if(self.current_step == 1):
-        #     rewards = torch.zeros((self.count_of_envs), device=self.device)
-        # elif(terminal):
-        #     rewards = obj / -1000
-        # else:
-        #     rew = (self.prev_obj - obj)
-        #     rewards = rew / 10000
-
-        # self.prev_obj = obj
-
         if(terminal):
             rewards = (self.compute_objective_function() / -1000) * terminal
         else:
             rewards = torch.zeros((self.count_of_envs), device=self.device)
-        return self.states.clone(), rewards, terminal
+
+        return self.states.clone(), (1 - self.built.clone()).abs(), rewards, terminal

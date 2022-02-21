@@ -55,7 +55,7 @@ class Agent:
             action_mask = (1 - observation).abs().reshape(probs.shape)
             probs = (probs * action_mask) / probs.sum(dim=-1).reshape((probs.shape[0], 1))
             actions = probs.argmax(dim = -1)
-            observation, reward, terminal = env.step(actions)
+            observation, mask, reward, terminal = env.step(actions)
             rewards += reward
 
         print('Obj function: {0} State: {1} Rewards: {2}'.format(env.compute_objective_function()[0], list(map(int, observation[0].tolist())), rewards.item()))
@@ -71,7 +71,7 @@ class Agent:
         if seed is None:
             seed = [i for i in range(count_of_envs)]
 
-        observations = env.reset()
+        observations, mask = env.reset()
 
         scores, curr_scores = [], torch.zeros(count_of_envs, device = self.device)
         best_avg_score, best_score, best_obj, best_observation = -1e9, -1e9, 1e9, {}
@@ -100,7 +100,7 @@ class Agent:
                 #==== MASKING =====
                 # action_mask = (observations - 1) * -1
                 # actions = action_mask.multinomial(num_samples=1).detach().cpu()
-                action_mask = (1 - observations).abs().reshape(probs.shape)
+                action_mask = mask.reshape(probs.shape)
                 probs = (probs * action_mask) / probs.sum(dim=-1).reshape((probs.shape[0], 1))
                 log_probs = (log_probs * action_mask) / log_probs.sum(dim=-1).reshape((log_probs.shape[0], 1))
                 
@@ -112,7 +112,7 @@ class Agent:
                 mem_pred_values[step] = values.cpu()
 
                 #==== Paralel env =====
-                observations, rewards, terminal = env.step(actions)
+                observations, mask, rewards, terminal = env.step(actions)
                 mem_rewards[step, :, 0] = rewards
                 curr_scores += rewards
 
@@ -128,15 +128,13 @@ class Agent:
                     max_score = max(curr_scores_list)
                     if(best_score < max_score):
                         indices = np.argwhere(curr_scores_list == np.amax(curr_scores_list)).flatten()
-                        # Magic
-                        mem_rewards[step, indices, 0] = 1
                         torch.save(self.model, 'models/' + self.name + '_best.pt')
                         best_score = max_score
                         best_observation = {'best_obj': best_obj, 'iteration': iteration, 'episode': len(scores),
-                            'observation': list(map(int,observations[indices[0]].tolist()))
+                            'observation': list(map(lambda a : 1 - int(a),mask[indices[0]].tolist()))
                         }
 
-                    observations = env.reset()
+                    observations, mask = env.reset()
                     avg_score = np.average(scores[-100:])
 
                     #save best model
