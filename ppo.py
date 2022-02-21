@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from util import write_to_file
+import json
 
 class Agent:
     def __init__(self, model, gamma = 0.99, entropy_loss_coef = 0.01, value_loss_coef = 0.5, epsilon = 0.1, lr = 0.001, lr_decay = 0.5, lr_steps = 500,
@@ -64,7 +65,7 @@ class Agent:
         print('Training is starting')
         count_of_steps_per_iteration = count_of_steps * count_of_envs
         mse = torch.nn.MSELoss()
-        logs = 'iteration,episode,score,avg_score,best_score,best_avg_score,obj_fun,best_obj'
+        logs = 'iteration,episode,score,avg_score,best_score,best_avg_score,best_obj'
         logs_losses = 'iteration,episode,policy,value,entropy'
 
         if seed is None:
@@ -131,7 +132,9 @@ class Agent:
                         mem_rewards[step, indices, 0] = 1
                         torch.save(self.model, 'models/' + self.name + '_best.pt')
                         best_score = max_score
-                        best_observation = { 'observation': observations[indices[0]], 'iteration': iteration, 'episode': len(scores) }
+                        best_observation = {'best_obj': best_obj, 'iteration': iteration, 'episode': len(scores),
+                            'observation': list(map(int,observations[indices[0]].tolist()))
+                        }
 
                     observations = env.reset()
                     avg_score = np.average(scores[-100:])
@@ -150,7 +153,8 @@ class Agent:
                             '{:06.4f}'.format(avg_score), '\tbest score: ', '{:06.4f}'.format(best_score), 
                             '\tbest avg score: ', '{:06.4f}'.format(best_avg_score), '\tBest obj:', best_obj)
 
-                    logs += '\n' + str(iteration) + ',' + str(episode) + ',' + str(curr_score) + ',' + str(avg_score) + ',' + str(best_score) + ',' + str(best_avg_score) + ',' + str()
+                    logs += '\n' + str(iteration) + ',' + str(episode) + ',' + str(curr_score) + ',' + str(avg_score) + ',' + str(best_score) + ',' \
+                                + str(best_avg_score) + ',' + str(best_obj)
                     if episode % count_of_envs == 0:
                         write_to_file(logs, self.results_path + self.name + '.csv')
                 #==== Paralel env =====                       
@@ -223,9 +227,10 @@ class Agent:
             if iteration % 10 == 0:
                 write_to_file(logs_losses, self.results_path + self.name + '_loss.csv')
         
-        result = f"Best objective: {best_obj}\nIteration: {best_observation['iteration']}   Episode: {best_observation['episode']}" \
-                + f"\nState: {list(map(int, best_observation['observation'].tolist()))}"
-        print(result)
-        write_to_file(result, self.results_path + self.name + '_result.txt')
+        print(f"Best objective: {best_obj}\nIteration: {best_observation['iteration']}   Episode: {best_observation['episode']}" \
+                + f"\nState: {best_observation['observation']}")
+
+        write_to_file(json.dumps(best_observation), self.results_path + self.name + '_result.json')
+
         write_to_file(logs, self.results_path + self.name + '.csv')
         torch.save(self.model, 'models/' + self.name + '_last.pt')
