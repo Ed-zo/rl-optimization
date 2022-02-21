@@ -57,12 +57,12 @@ if __name__ == '__main__':
     print('device: ', device)
     start_date = datetime.datetime.now()
 
-    env_candidates = 5
-    env_p = 4
-    env_count = 10
+    env_candidates = 87
+    env_p = 8
+    env_count = 50
     results_path = 'results/'
 
-    env = Env(env_p, env_candidates, env_count, str(env_candidates), device)
+    env = Env(env_p, env_candidates, env_count, 'data/BA-87', device)
 
     net = PolicyValueModel(env_candidates)
     # net = torch.load('models/save.net')
