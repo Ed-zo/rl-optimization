@@ -100,9 +100,8 @@ class Agent:
                 #==== MASKING =====
                 # action_mask = (observations - 1) * -1
                 # actions = action_mask.multinomial(num_samples=1).detach().cpu()
-                action_mask = mask.reshape(probs.shape)
-                probs = (probs * action_mask) / probs.sum(dim=-1).reshape((probs.shape[0], 1))
-                log_probs = (log_probs * action_mask) / log_probs.sum(dim=-1).reshape((log_probs.shape[0], 1))
+                probs = (probs * mask) / probs.sum(dim=-1).reshape((probs.shape[0], 1))
+                log_probs = log_probs * mask
                 
                 actions = probs.multinomial(num_samples=1).detach()
                 #==== MASKING =====
@@ -124,6 +123,7 @@ class Agent:
                     curr_scores_list = curr_scores.view(-1).tolist()
                     curr_scores[:] = 0
                     scores.extend(curr_scores_list)
+                    best_obj = min(min(obj), best_obj)
 
                     max_score = max(curr_scores_list)
                     if(best_score < max_score):
@@ -142,7 +142,6 @@ class Agent:
                         torch.save(self.model, 'models/' + self.name + '_avgbest.pt')
 
                     best_avg_score = max(best_avg_score, avg_score)
-                    best_obj = min(min(obj), best_obj)
                     episode = len(scores)
                     curr_score = curr_scores_list[0]
 

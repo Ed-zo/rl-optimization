@@ -15,17 +15,21 @@ import numpy as np
 
 
 class PolicyValueModel(nn.Module):
-    def __init__(self, count_of_actions):
+    def __init__(self, count_of_candidates):
         super(PolicyValueModel, self).__init__()
 
-        self.conv1 = nn.Conv2d(2, 16, 3)
-        self.conv2 = nn.Conv2d(16, 32, 3)
+        self.conv1 = nn.Conv2d(2, 32, 3)
+        self.conv2 = nn.Conv2d(32, 64, 3)
 
-        self.fc_p1 = nn.Linear(32, 16)
-        self.fc_p2 = nn.Linear(16, count_of_actions)
+        self.apool = nn.AdaptiveAvgPool2d(7)
 
-        self.fc_v1 = nn.Linear(32, 16)
-        self.fc_v2 = nn.Linear(16, 1)
+        self.size = 64
+
+        self.fc_p1 = nn.Linear(self.size, 32)
+        self.fc_p2 = nn.Linear(32, count_of_candidates)
+
+        self.fc_v1 = nn.Linear(self.size, 32)
+        self.fc_v2 = nn.Linear(32, 1)
 
         features_layers = [self.conv1, self.conv2]
         for layer in features_layers:
@@ -38,10 +42,13 @@ class PolicyValueModel(nn.Module):
             torch.nn.init.zeros_(layer.bias)
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.conv2(x)
+        x = F.relu(self.conv1(x))
+        
+        x = F.relu(self.conv2(x))
 
-        x = x.view(-1, 32)
+        x = F.adaptive_avg_pool2d(x, (1, 1))
+
+        x = torch.flatten(x, 1)
 
         x_logit = F.relu(self.fc_p1(x))
         logit = self.fc_p2(x_logit)
@@ -57,12 +64,13 @@ if __name__ == '__main__':
     print('device: ', device)
     start_date = datetime.datetime.now()
 
-    env_candidates = 5
-    env_p = 4
-    env_count = 2
+    env_candidates = 20
+    env_p = 10
+    data = 'data/test-20'
+    env_count = 5
     results_path = 'results/'
 
-    env = Env(env_p, env_candidates, env_count, 'data/test-5', device)
+    env = Env(env_p, env_candidates, env_count, data, device)
 
     net = PolicyValueModel(env_candidates)
     # net = torch.load('models/save.net')
@@ -71,7 +79,7 @@ if __name__ == '__main__':
                   lr=0.01, name='p_med', results_path=results_path)
 
     agent.train(env=env, count_of_envs=env_count, input_dim=(2, env_candidates, env_candidates),
-                count_of_iterations=5, count_of_steps=512, batch_size=512)
+                count_of_iterations=40, count_of_steps=512, batch_size=512)
     
     # agent.test(env)
     

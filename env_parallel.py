@@ -24,7 +24,7 @@ class Env:
             values = lines[i].split(';')
             for j in range(candidates):
                 self.distances[0, i, j] = float(values[j])
-                self.states[:, 0, i, j] = float(values[j])
+                self.states[:, 0, i, j] = float(values[j]) / 100.0
 
         f = open(path + '/C.txt', "r")
         lines = f.read().split('\n')
@@ -37,12 +37,12 @@ class Env:
         #self.distances = self.distances.repeat(self.count_of_envs, 1, 1)
 
     def reset(self):
-        self.built = torch.zeros((self.count_of_envs, self.candidates))
+        self.built = torch.zeros((self.count_of_envs, self.candidates), device=self.device)
         self.states[:, 1, :, :] = 0
         self.prev_obj = torch.zeros((self.count_of_envs), device=self.device)
         self.current_step = 0
         
-        return self.states.clone(), (1 - self.built.clone()).abs()
+        return self.states.clone(), (1 - self.built.clone())
 
     def compute_objective_function(self):
         if self.current_step == 0:
@@ -64,16 +64,15 @@ class Env:
         self.built[indices] = 1
         self.built = self.built.view(-1, self.candidates)
 
-        for i in range(len(actions)):
-            self.states[i, 1, :, actions[i]] = 1
-            self.states[i, 1, actions[i], :] = 1
+        self.states[:, 1, :, actions] = 1
+        self.states[:, 1, actions, :] = 1
             
         self.current_step += 1
         terminal = self.current_step == self.P
         
         if(terminal):
-            rewards = (self.compute_objective_function() / -1000) * terminal
+            rewards = (self.compute_objective_function() / -10000) * terminal
         else:
             rewards = torch.zeros((self.count_of_envs), device=self.device)
 
-        return self.states.clone(), (1 - self.built.clone()).abs(), rewards, terminal
+        return self.states.clone(), (1 - self.built.clone()), rewards, terminal
