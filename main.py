@@ -6,7 +6,7 @@ from env_parallel import Env
 from ppo import Agent
 import torch.nn.init as init
 import numpy as np
-
+import signal
 
 # def weights_init_xavier(m):
 #     classname = m.__class__.__name__
@@ -57,21 +57,22 @@ if __name__ == '__main__':
     print('device: ', device)
     start_date = datetime.datetime.now()
 
-    env_candidates = 87
+    env_candidates = 20
     env_p = 8
-    env_count = 50
+    env_count = 30
     results_path = 'results/'
 
-    env = Env(env_p, env_candidates, env_count, 'data/BA-87', device)
+    env = Env(env_p, env_candidates, env_count, 'data/test-20', device)
 
     net = PolicyValueModel(env_candidates)
-    # net = torch.load('models/save.net')
+    # net = torch.load('models/p_med_last.pt')
 
-    agent = Agent(net, device=device,
-                  lr=0.01, name='p_med', results_path=results_path)
+    agent = Agent(net, device=device, lr=0.01, name='p_med_0', results_path=results_path)
+
+    signal.signal(signal.SIGINT, agent.stop_training)
 
     agent.train(env=env, count_of_envs=env_count, input_dim=(env_candidates,),
-                count_of_iterations=5, count_of_steps=512, batch_size=512)
+                count_of_iterations=30, count_of_steps=512, batch_size=512)
     
     # agent.test(env)
     
