@@ -129,8 +129,6 @@ class Agent:
                     max_score = max(curr_scores_list)
                     if(best_score < max_score):
                         indices = np.argwhere(curr_scores_list == np.amax(curr_scores_list)).flatten()
-                        # Magic
-                        mem_rewards[step, indices, 0] = 1
                         torch.save(self.model, 'models/' + self.name + '_best.pt')
                         best_score = max_score
                         best_observation = {'best_obj': best_obj, 'iteration': iteration, 'episode': len(scores),
