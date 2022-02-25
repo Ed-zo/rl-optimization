@@ -63,6 +63,7 @@ class Agent:
 
     def train(self, env, input_dim, count_of_envs, count_of_iterations, count_of_steps, batch_size, count_of_epochs = 4, first_iteration = 0, seed = None):
         print('Training is starting')
+        self.finish_training = False
         count_of_steps_per_iteration = count_of_steps * count_of_envs
         mse = torch.nn.MSELoss()
         logs = 'iteration,episode,score,avg_score,best_score,best_avg_score,best_obj'
@@ -77,7 +78,8 @@ class Agent:
         best_avg_score, best_score, best_obj, best_observation = -1e9, -1e9, 1e9, {}
 
         for iteration in range(first_iteration, count_of_iterations):
-            if iteration > 0 and iteration % self.lr_steps == 0:
+            if self.finish_training: break
+            if iteration > 0 and iteration % int(count_of_iterations / 5) == 0:
                 #self.lr *= self.lr_decay
                 #for g in self.optimizer.param_groups:
                 #    g['lr'] = self.lr
@@ -98,10 +100,8 @@ class Agent:
                 probs, log_probs = F.softmax(logits, dim = -1), F.log_softmax(logits, dim = -1)
 
                 #==== MASKING =====
-                # action_mask = (observations - 1) * -1
-                # actions = action_mask.multinomial(num_samples=1).detach().cpu()
                 probs = (probs * mask) / probs.sum(dim=-1).reshape((probs.shape[0], 1))
-                log_probs = log_probs * mask
+                log_probs = log_probs * log_probs * ((1 - mask) * 1e+6 + 1)
                 
                 actions = probs.multinomial(num_samples=1).detach()
                 #==== MASKING =====
@@ -231,3 +231,7 @@ class Agent:
 
         write_to_file(logs, self.results_path + self.name + '.csv')
         torch.save(self.model, 'models/' + self.name + '_last.pt')
+
+    def stop_training(self, sig, frame):
+        print('Stoping the training')
+        self.finish_training = True
