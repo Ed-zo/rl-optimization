@@ -101,7 +101,7 @@ class Agent:
 
                 #==== MASKING =====
                 probs = (probs * mask) / probs.sum(dim=-1).reshape((probs.shape[0], 1))
-                log_probs = log_probs * log_probs * ((1 - mask) * 1e+6 + 1)
+                log_probs = log_probs * ((1 - mask) * 1e+2 + 1)
                 
                 actions = probs.multinomial(num_samples=1).detach()
                 #==== MASKING =====

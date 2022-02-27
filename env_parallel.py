@@ -6,15 +6,14 @@ class Env:
         self.candidates = candidates
         self.count_of_envs = count_of_envs
         self.device = device
-        self.customers = torch.zeros((1, self.candidates), device = device)
-        self.distances = torch.zeros((1, self.candidates, self.candidates), device = device)
+        self.customers = torch.zeros((1, self.candidates))
+        self.distances = torch.zeros((1, self.candidates, self.candidates))
         
-        #two matrices - first is distance matrix and second is if "sklad" is built
-        self.states = torch.zeros((self.count_of_envs, 2, self.candidates, self.candidates), device = device)
+        #two matrices - first is distance matrix and second is customer needs and third is if "sklad" is built
+        self.states = torch.zeros((self.count_of_envs, 3, self.candidates, self.candidates), device = device)
         self.built = torch.zeros((self.count_of_envs, self.candidates), device = device)
         self.current_step = 0
         self.order = torch.arange(count_of_envs, device = device) * candidates
-        self.prev_obj = torch.zeros((self.count_of_envs))
 
         f = open(path + '/D.txt', "r")
         lines = f.read().split('\n')
@@ -29,17 +28,19 @@ class Env:
         f = open(path + '/C.txt', "r")
         lines = f.read().split('\n')
         f.close()
-
+        
         for i in range(candidates):
             self.customers[0, i] = float(lines[i])
+
+        max_C = self.customers.max(dim=-1).values
+        self.states[:, 1, :, :] = self.customers[0] / max_C
 
         #self.customers = self.customers.repeat(self.count_of_envs, 1)
         #self.distances = self.distances.repeat(self.count_of_envs, 1, 1)
 
     def reset(self):
         self.built = torch.zeros((self.count_of_envs, self.candidates), device=self.device)
-        self.states[:, 1, :, :] = 0
-        self.prev_obj = torch.zeros((self.count_of_envs), device=self.device)
+        self.states[:, 2, :, :] = 0
         self.current_step = 0
         
         return self.states.clone(), (1 - self.built.clone())
@@ -64,14 +65,14 @@ class Env:
         self.built[indices] = 1
         self.built = self.built.view(-1, self.candidates)
 
-        self.states[:, 1, :, actions] = 1
-        self.states[:, 1, actions, :] = 1
+        self.states[:, 2, :, actions] = 1
+        self.states[:, 2, actions, :] = 1
             
         self.current_step += 1
         terminal = self.current_step == self.P
         
         if(terminal):
-            rewards = (self.compute_objective_function() / -10000) * terminal
+            rewards = (self.compute_objective_function() / -100000) * terminal
         else:
             rewards = torch.zeros((self.count_of_envs), device=self.device)
 

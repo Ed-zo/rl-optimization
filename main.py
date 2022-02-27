@@ -6,6 +6,7 @@ from env_parallel import Env
 from ppo import Agent
 import torch.nn.init as init
 import numpy as np
+import signal
 
 
 # def weights_init_xavier(m):
@@ -18,12 +19,12 @@ class PolicyValueModel(nn.Module):
     def __init__(self, count_of_candidates):
         super(PolicyValueModel, self).__init__()
 
-        self.conv1 = nn.Conv2d(2, 32, 3)
-        self.conv2 = nn.Conv2d(32, 64, 3)
+        self.conv1 = nn.Conv2d(3, 16, 3)
+        self.conv2 = nn.Conv2d(16, 32, 3)
 
-        self.apool = nn.AdaptiveAvgPool2d(7)
+        self.apool = nn.AdaptiveAvgPool2d(1)
 
-        self.size = 64
+        self.size = 32
 
         self.fc_p1 = nn.Linear(self.size, 32)
         self.fc_p2 = nn.Linear(32, count_of_candidates)
@@ -46,7 +47,7 @@ class PolicyValueModel(nn.Module):
         
         x = F.relu(self.conv2(x))
 
-        x = F.adaptive_avg_pool2d(x, (1, 1))
+        x = self.apool(x)
 
         x = torch.flatten(x, 1)
 
@@ -64,10 +65,10 @@ if __name__ == '__main__':
     print('device: ', device)
     start_date = datetime.datetime.now()
 
-    env_candidates = 20
-    env_p = 10
-    data = 'data/test-20'
-    env_count = 5
+    env_candidates = 5
+    env_p = 4
+    data = 'data/test-5'
+    env_count = 40
     results_path = 'results/'
 
     env = Env(env_p, env_candidates, env_count, data, device)
@@ -75,11 +76,11 @@ if __name__ == '__main__':
     net = PolicyValueModel(env_candidates)
     # net = torch.load('models/save.net')
 
-    agent = Agent(net, device=device,
-                  lr=0.01, name='p_med', results_path=results_path)
+    agent = Agent(net, device=device, lr=0.01, name='p_med', results_path=results_path, epsilon=0.2)
+    signal.signal(signal.SIGINT, agent.stop_training)
 
-    agent.train(env=env, count_of_envs=env_count, input_dim=(2, env_candidates, env_candidates),
-                count_of_iterations=40, count_of_steps=512, batch_size=512)
+    agent.train(env=env, count_of_envs=env_count, input_dim=(3, env_candidates, env_candidates),
+                count_of_iterations=40, count_of_steps=256, batch_size=256)
     
     # agent.test(env)
     
