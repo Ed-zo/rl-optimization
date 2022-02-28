@@ -76,7 +76,7 @@ if __name__ == '__main__':
     net = PolicyValueModel(env_candidates)
     # net = torch.load('models/save.net')
 
-    agent = Agent(net, device=device, lr=0.01, name='p_med', results_path=results_path, epsilon=0.2)
+    agent = Agent(net, device=device, lr=0.01, name='p_med', results_path=results_path, epsilon=0.2, td_steps=env_p,)
     signal.signal(signal.SIGINT, agent.stop_training)
 
     agent.train(env=env, count_of_envs=env_count, input_dim=(3, env_candidates, env_candidates),

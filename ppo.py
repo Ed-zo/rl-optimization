@@ -91,20 +91,21 @@ class Agent:
             mem_non_terminals = torch.ones((count_of_steps, count_of_envs, 1))
             mem_actions = torch.zeros((count_of_steps, count_of_envs, 1)).long()
             mem_observations = torch.zeros((count_of_steps, count_of_envs, ) + input_dim)
+            mem_mask = torch.ones((count_of_steps, ) + mask.shape)
 
             for step in range(count_of_steps):
                 with torch.no_grad():
                     logits, values = self.model(observations.to(self.device))
+                
+                #==== MASKING =====
+                mem_mask[step] = mask
+                logits = torch.where(mask == 1., logits, torch.tensor(-1e+8).to(self.device))
+                #==== MASKING =====
 
                 mem_observations[step] = observations.clone()
                 probs, log_probs = F.softmax(logits, dim = -1), F.log_softmax(logits, dim = -1)
 
-                #==== MASKING =====
-                probs = (probs * mask) / probs.sum(dim=-1).reshape((probs.shape[0], 1))
-                log_probs = log_probs * ((1 - mask) * 1e+2 + 1)
-                
                 actions = probs.multinomial(num_samples=1).detach()
-                #==== MASKING =====
 
                 mem_actions[step] = actions.cpu()
                 mem_log_probs[step] = log_probs.cpu().gather(1, mem_actions[step])
@@ -185,6 +186,7 @@ class Agent:
                 advantages[step] = (R - mem_pred_values[step]).detach()
 
             mem_observations = mem_observations.view((-1,) + input_dim)
+            mem_mask = mem_mask.to(self.device).view((-1,) + mask.shape[1:])
             mem_actions = mem_actions.to(self.device).view(-1, 1)
             mem_log_probs = mem_log_probs.to(self.device).view(-1, 1)
             target_values = target_values.to(self.device).view(-1, 1)
@@ -198,6 +200,7 @@ class Agent:
                     indices = perm[batch:batch+batch_size]
 
                     logits, values = self.model(mem_observations[indices].to(self.device))
+                    logits = torch.where(mem_mask[indices] == 1., logits, torch.tensor(-1e+8).to(self.device))  #Masking
                     probs, log_probs = F.softmax(logits, dim=-1), F.log_softmax(logits, dim=-1)
                     new_log_probs = log_probs.gather(1, mem_actions[indices])
                     entropy_loss = (log_probs * probs).sum(1, keepdim=True).mean()
