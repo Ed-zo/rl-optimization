@@ -23,7 +23,10 @@ class Env:
             values = lines[i].split(';')
             for j in range(candidates):
                 self.distances[0, i, j] = float(values[j])
-                self.states[:, 0, i, j] = float(values[j]) / 100.0
+                self.states[:, 0, i, j] = float(values[j])
+
+        max_D = self.states[0, 0, :, :].max()
+        self.states[:, 0, :, :] = self.states[:, 0, :, :] / max_D
 
         f = open(path + '/C.txt', "r")
         lines = f.read().split('\n')
