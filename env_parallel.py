@@ -7,11 +7,10 @@ class Env:
         self.count_of_envs = count_of_envs
         self.device = device
         self.customers = torch.zeros((1, self.candidates), device = device)
-        self.distances = torch.zeros((1, self.candidates, self.candidates), device = device)
+        self.distances = torch.zeros((self.candidates, self.candidates), device = device)
         self.states = torch.zeros((self.count_of_envs, self.candidates), device = device)
         self.current_step = 0
         self.order = torch.arange(count_of_envs, device = device) * candidates
-        self.prev_obj = torch.zeros((self.count_of_envs))
 
         f = open(path + '/D.txt', "r")
         lines = f.read().split('\n')
@@ -20,7 +19,7 @@ class Env:
         for i in range(candidates):
             values = lines[i].split(';')
             for j in range(candidates):
-                self.distances[0, i, j] = float(values[j])
+                self.distances[i, j] = float(values[j])
 
         f = open(path + '/C.txt', "r")
         lines = f.read().split('\n')
@@ -28,9 +27,6 @@ class Env:
 
         for i in range(candidates):
             self.customers[0, i] = float(lines[i])
-
-        #self.customers = self.customers.repeat(self.count_of_envs, 1)
-        #self.distances = self.distances.repeat(self.count_of_envs, 1, 1)
 
     def reset(self):
         self.states = torch.zeros((self.count_of_envs, self.candidates), device = self.device)
@@ -42,15 +38,20 @@ class Env:
         if self.current_step == 0:
             return 0
 
-        objective_values = torch.zeros((self.count_of_envs))
-        states_cpu = self.states.cpu()
-        for i in range(self.count_of_envs):
-            placements = torch.nonzero(states_cpu[i]).squeeze(1)
-            mins = torch.min(self.distances.index_select(1, placements), 1)
-            sum = (mins.values * self.customers).sum()
-            objective_values[i] = sum.item()
+        #True and False mask for whole columns
+        built_mask = (self.states == 0.).repeat_interleave(self.candidates, 0)
+        #Distance mask but repeated for every env
+        dist = self.distances.repeat((self.count_of_envs, 1))
+        #Set big number for non-built ones so Min doesnt pick them
+        dist[built_mask] = 10000
+        dist = dist.reshape((self.count_of_envs, self.candidates, self.candidates))
+        #Find mins in every row
+        mins = torch.min(dist, 2)
+        #Objective function
+        obj = mins.values * self.customers
+        sum = obj.sum(1)
 
-        return objective_values.to(self.device)
+        return sum
 
     def step(self, actions):
         self.states = self.states.view(-1)
