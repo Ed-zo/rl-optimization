@@ -53,6 +53,7 @@ class Env:
         return objective_values.to(self.device)
 
     def step(self, actions):
+        actions = torch.tensor(actions)
         self.states = self.states.view(-1)
         indices = self.order + actions.view(-1)
         self.states[indices] = 1
