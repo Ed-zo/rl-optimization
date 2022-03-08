@@ -19,10 +19,12 @@ class PolicyValueModel(nn.Module):
     def __init__(self, count_of_candidates):
         super(PolicyValueModel, self).__init__()
 
-        self.conv1 = nn.Conv2d(3, 32, (1, count_of_candidates))
-        self.conv2 = nn.Conv2d(32, 32, (count_of_candidates, 1))
+        self.conv1 = nn.Conv2d(4, 16, (1, count_of_candidates))
+        self.conv2 = nn.Conv2d(4, 16, (count_of_candidates, 1))
+        
+        self.apool = nn.AdaptiveAvgPool1d(1)
 
-        self.size = 32
+        self.size = 32*3
 
         self.fc_p1 = nn.Linear(self.size, 32)
         self.fc_p2 = nn.Linear(32, count_of_candidates)
@@ -41,9 +43,11 @@ class PolicyValueModel(nn.Module):
             torch.nn.init.zeros_(layer.bias)
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
+        a = F.relu(self.conv1(x))
+        b = F.relu(self.conv2(x))
 
+        x = torch.cat((a.squeeze(), b.squeeze()), 1)
+        x = self.apool(x)
         x = torch.flatten(x, 1)
 
         x_logit = F.relu(self.fc_p1(x))
