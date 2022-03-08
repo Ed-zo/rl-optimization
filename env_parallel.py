@@ -88,9 +88,13 @@ class Env:
         self.current_step += 1
         terminal = self.current_step == self.P
 
+        count = self.count_of_envs * self.candidates
         mins = self.compute_mins()
-        x = (mins.indices / self.candidates).repeat_interleave(self.candidates, 0)
-        self.states[:, 2] = x.reshape((self.count_of_envs, self.candidates, self.candidates))
+        min_indices = mins.indices.view(count)
+        indices = torch.zeros((count, self.candidates), device=self.device)
+        indices[torch.arange(count), min_indices] = 1
+        indices = indices.view(self.count_of_envs, self.candidates, self.candidates)
+        self.states[:, 2] = indices
         
         if(terminal):
             rewards = (self.compute_objective_function(mins) / -100000) * terminal

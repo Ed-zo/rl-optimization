@@ -24,7 +24,7 @@ class PolicyValueModel(nn.Module):
         
         self.apool = nn.AdaptiveAvgPool1d(1)
 
-        self.size = 32*3
+        self.size = 32
 
         self.fc_p1 = nn.Linear(self.size, 32)
         self.fc_p2 = nn.Linear(32, count_of_candidates)
@@ -67,7 +67,7 @@ if __name__ == '__main__':
     env_candidates = 5
     env_p = 4
     data = 'data/test-5'
-    env_count = 40
+    env_count = 3
     results_path = 'results/'
 
     env = Env(env_p, env_candidates, env_count, data, device)
@@ -78,7 +78,7 @@ if __name__ == '__main__':
     agent = Agent(net, device=device, lr=0.01, name='p_med', results_path=results_path, epsilon=0.2, td_steps=env_p)
     signal.signal(signal.SIGINT, agent.stop_training)
 
-    agent.train(env=env, count_of_envs=env_count, input_dim=(3, env_candidates, env_candidates),
+    agent.train(env=env, count_of_envs=env_count, input_dim=(4, env_candidates, env_candidates),
                 count_of_iterations=40, count_of_steps=256, batch_size=256)
     
     # agent.test(env)
