@@ -55,7 +55,7 @@ class Agent:
             action_mask = (1 - observation).abs().reshape(probs.shape)
             probs = (probs * action_mask) / probs.sum(dim=-1).reshape((probs.shape[0], 1))
             actions = probs.argmax(dim = -1)
-            observation, reward, terminal = env.step(actions)
+            observation, mask, reward, terminal = env.step(actions)
             rewards += reward
 
         print('Obj function: {0} State: {1} Rewards: {2}'.format(env.compute_objective_function()[0], list(map(int, observation[0].tolist())), rewards.item()))
@@ -72,7 +72,7 @@ class Agent:
         if seed is None:
             seed = [i for i in range(count_of_envs)]
 
-        observations = env.reset()
+        observations, mask = env.reset()
 
         scores, curr_scores = [], torch.zeros(count_of_envs, device = self.device)
         best_avg_score, best_score, best_obj, best_observation = -1e9, -1e9, 1e9, {}
@@ -91,17 +91,16 @@ class Agent:
             mem_non_terminals = torch.ones((count_of_steps, count_of_envs, 1))
             mem_actions = torch.zeros((count_of_steps, count_of_envs, 1)).long()
             mem_observations = torch.zeros((count_of_steps, count_of_envs, ) + input_dim)
-            mem_mask = torch.ones((count_of_steps, count_of_envs, ) + input_dim)
+            mem_mask = torch.ones((count_of_steps, ) + mask.shape)
 
             for step in range(count_of_steps):
                 with torch.no_grad():
                     logits, values = self.model(observations.to(self.device))
                 
                 #==== MASKING =====
-                action_mask = (1 - observations)
-                mem_mask[step] = action_mask
-                logits = torch.where(action_mask == 1., logits, torch.tensor(-1e+8).to(self.device))
-                #==== MASKING =====                
+                mem_mask[step] = mask
+                logits = torch.where(mask == 1., logits, torch.tensor(-1e+8).to(self.device))
+                #==== MASKING =====
 
                 mem_observations[step] = observations.clone()
                 probs, log_probs = F.softmax(logits, dim = -1), F.log_softmax(logits, dim = -1)
@@ -113,7 +112,7 @@ class Agent:
                 mem_pred_values[step] = values.cpu()
 
                 #==== Paralel env =====
-                observations, rewards, terminal = env.step(actions)
+                observations, mask, rewards, terminal = env.step(actions)
                 mem_rewards[step, :, 0] = rewards
                 curr_scores += rewards
 
@@ -133,10 +132,10 @@ class Agent:
                         torch.save(self.model, 'models/' + self.name + '_best.pt')
                         best_score = max_score
                         best_observation = {'best_obj': best_obj, 'iteration': iteration, 'episode': len(scores),
-                            'observation': list(map(int,observations[indices[0]].tolist()))
+                            'observation': list(map(lambda a : 1 - int(a),mask[indices[0]].tolist()))
                         }
 
-                    observations = env.reset()
+                    observations, mask = env.reset()
                     avg_score = np.average(scores[-100:])
 
                     #save best model
@@ -187,7 +186,7 @@ class Agent:
                 advantages[step] = (R - mem_pred_values[step]).detach()
 
             mem_observations = mem_observations.view((-1,) + input_dim)
-            mem_mask = mem_mask.to(self.device).view((-1,) + input_dim)
+            mem_mask = mem_mask.to(self.device).view((-1,) + mask.shape[1:])
             mem_actions = mem_actions.to(self.device).view(-1, 1)
             mem_log_probs = mem_log_probs.to(self.device).view(-1, 1)
             target_values = target_values.to(self.device).view(-1, 1)

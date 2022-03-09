@@ -21,10 +21,10 @@ class PolicyValueModel(nn.Module):
         # self.conv1 = nn.Conv1d(1, 16, 3)
         # self.conv2 = nn.Conv1d(16, 32, 3)
 
-        self.fc_p1 = nn.Linear(count_of_actions, 16)
+        self.fc_p1 = nn.Linear(count_of_actions*2, 16)
         self.fc_p2 = nn.Linear(16, count_of_actions)
 
-        self.fc_v1 = nn.Linear(count_of_actions, 16)
+        self.fc_v1 = nn.Linear(count_of_actions*2, 16)
         self.fc_v2 = nn.Linear(16, 1)
 
         features_layers = []  # [self.conv1, self.conv2]
@@ -57,12 +57,12 @@ if __name__ == '__main__':
     print('device: ', device)
     start_date = datetime.datetime.now()
 
-    env_candidates = 20
-    env_p = 8
-    env_count = 30
+    env_candidates = 5
+    env_p = 4
+    env_count = 3
     results_path = 'results/'
 
-    env = Env(env_p, env_candidates, env_count, 'data/test-20', device)
+    env = Env(env_p, env_candidates, env_count, 'data/test-5', device)
 
     net = PolicyValueModel(env_candidates)
     # net = torch.load('models/p_med_last.pt')
@@ -71,7 +71,7 @@ if __name__ == '__main__':
 
     signal.signal(signal.SIGINT, agent.stop_training)
 
-    agent.train(env=env, count_of_envs=env_count, input_dim=(env_candidates,),
+    agent.train(env=env, count_of_envs=env_count, input_dim=(env_candidates*2,),
                 count_of_iterations=30, count_of_steps=256, batch_size=256)
     
     # agent.test(env)
