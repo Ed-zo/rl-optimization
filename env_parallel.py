@@ -36,7 +36,7 @@ class Env:
             self.customers[0, i] = float(lines[i])
 
         max_C = self.customers.max(dim=-1).values
-        self.states[:, 1, :, :] = self.customers[0] / max_C
+        self.states[:, 1, :, :] = (self.customers[0] / max_C).view(self.candidates,  1)
 
         self.states[:, 2] = -1
 
@@ -46,7 +46,7 @@ class Env:
         self.states[:, 2] = -1
         self.current_step = 0
         
-        return self.states.clone(), (1 - self.built.clone())
+        return self.states.clone(), (1 - self.built)
 
     def compute_mins(self):
         #True and False mask for whole columns
@@ -54,7 +54,7 @@ class Env:
         #Distance mask but repeated for every env
         dist = self.distances.repeat((self.count_of_envs, 1))
         #Set big number for non-built ones so Min doesnt pick them
-        dist[built_mask] = 10000
+        dist[built_mask] = 100000
         dist = dist.reshape((self.count_of_envs, self.candidates, self.candidates))
         #Find mins in every row
         mins = torch.min(dist, 2)
@@ -101,4 +101,4 @@ class Env:
         else:
             rewards = torch.zeros((self.count_of_envs), device=self.device)
 
-        return self.states.clone(), (1 - self.built.clone()), rewards, terminal
+        return self.states.clone(), (1 - self.built), rewards, terminal
