@@ -1,4 +1,3 @@
-from asyncore import write
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -66,7 +65,7 @@ class Agent:
         self.finish_training = False
         count_of_steps_per_iteration = count_of_steps * count_of_envs
         mse = torch.nn.MSELoss()
-        logs = 'iteration,episode,score,avg_score,best_score,best_avg_score,best_obj'
+        logs = 'iteration,episode,score,avg_score,best_score,best_avg_score,obj,avg_obj,best_obj'
         logs_losses = 'iteration,episode,policy,value,entropy'
 
         if seed is None:
@@ -74,7 +73,7 @@ class Agent:
 
         observations, mask = env.reset()
 
-        scores, curr_scores = [], torch.zeros(count_of_envs, device = self.device)
+        scores, obj_scores, curr_scores,  = [], [], torch.zeros(count_of_envs, device = self.device)
         best_avg_score, best_score, best_obj, best_observation = -1e9, -1e9, 1e9, {}
 
         for iteration in range(first_iteration, count_of_iterations):
@@ -112,31 +111,33 @@ class Agent:
                 mem_pred_values[step] = values.cpu()
 
                 #==== Paralel env =====
-                observations, mask, rewards, terminal = env.step(actions)
+                observations, mask, rewards, terminal, extra_info = env.step(actions)
                 mem_rewards[step, :, 0] = rewards
                 curr_scores += rewards
 
                 if terminal:
                     mem_non_terminals[step] = 0
-                    obj = env.compute_objective_function().tolist()
+                    obj = extra_info['obj'].tolist()
 
                     # logging
                     curr_scores_list = curr_scores.view(-1).tolist()
                     curr_scores[:] = 0
                     scores.extend(curr_scores_list)
-                    best_obj = min(min(obj), best_obj)
+                    obj_scores.extend(obj)
+                    min_obj = min(obj)
 
-                    max_score = max(curr_scores_list)
-                    if(best_score < max_score):
+                    best_score = max(best_score, max(curr_scores_list))
+                    if(min_obj < best_obj):
                         indices = np.argwhere(curr_scores_list == np.amax(curr_scores_list)).flatten()
+                        best_obj = min_obj
                         torch.save(self.model, 'models/' + self.name + '_best.pt')
-                        best_score = max_score
                         best_observation = {'best_obj': best_obj, 'iteration': iteration, 'episode': len(scores),
                             'observation': list(map(lambda a : 1 - int(a),mask[indices[0]].tolist()))
                         }
 
                     observations, mask = env.reset()
                     avg_score = np.average(scores[-100:])
+                    avg_obj = np.average(obj_scores[-100:])
 
                     #save best model
                     if(best_avg_score >= avg_score):
@@ -148,11 +149,11 @@ class Agent:
 
                     if episode % 50 == 0:
                         print('iteration: ', '{:7d}'.format(iteration), '\tepsiode: ', episode, '\tscore: ', '{:06.4f}'.format(curr_score), '\tavg score: ', 
-                            '{:06.4f}'.format(avg_score), '\tbest score: ', '{:06.4f}'.format(best_score), 
-                            '\tbest avg score: ', '{:06.4f}'.format(best_avg_score), '\tBest obj:', best_obj)
+                            '{:06.4f}'.format(avg_score), '\tBest score: ', '{:06.4f}'.format(best_score), 
+                              'Obj:', '{: 5.0f}'.format(obj[0]), '\tAvg obj: ', '{: 5.0f}'.format(avg_obj), '\tBest obj:', best_obj)
 
                     logs += '\n' + str(iteration) + ',' + str(episode) + ',' + str(curr_score) + ',' + str(avg_score) + ',' + str(best_score) + ',' \
-                                + str(best_avg_score) + ',' + str(best_obj)
+                        + str(best_avg_score) + ',' + str(obj[0]) + ',' + str(avg_obj) + ',' + str(best_obj)
                     if episode % count_of_envs == 0:
                         write_to_file(logs, self.results_path + self.name + '.csv')
                 #==== Paralel env =====                       
