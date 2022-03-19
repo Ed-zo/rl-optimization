@@ -65,7 +65,7 @@ class Agent:
         self.finish_training = False
         count_of_steps_per_iteration = count_of_steps * count_of_envs
         mse = torch.nn.MSELoss()
-        logs = 'iteration,episode,score,avg_score,best_score,best_avg_score,best_obj'
+        logs = 'iteration,episode,score,avg_score,best_score,best_avg_score,obj,avg_obj,best_obj'
         logs_losses = 'iteration,episode,policy,value,entropy'
 
         if seed is None:
