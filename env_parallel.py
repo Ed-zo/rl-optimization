@@ -83,7 +83,7 @@ class Env:
         s_actions = actions.squeeze()
         ar = torch.arange(self.count_of_envs)
         self.states[ar, 3, :, s_actions] = 1
-        self.states[ar, 3, s_actions, :] = 1
+        # self.states[ar, 3, s_actions, :] = 1
             
         self.current_step += 1
         terminal = self.current_step == self.P
@@ -96,9 +96,12 @@ class Env:
         indices = indices.view(self.count_of_envs, self.candidates, self.candidates)
         self.states[:, 2] = indices
         
+
         if(terminal):
-            rewards = (self.compute_objective_function(mins) / -100000) * terminal
+            obj = self.compute_objective_function(mins)
+            rewards = (obj / -100000) * terminal
         else:
+            obj = None
             rewards = torch.zeros((self.count_of_envs), device=self.device)
 
-        return self.states.clone(), (1 - self.built), rewards, terminal
+        return self.states.clone(), (1 - self.built), rewards, terminal, {'obj': obj }
