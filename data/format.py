@@ -1,5 +1,5 @@
-SIZE = 249
-f = open('TT-249/S_CTT_0249_0001_D.txt', "r")
+SIZE = 515
+f = open(f'BB-{SIZE}/D_original.txt', "r")
 
 
 lines = f.read().split('\n')
