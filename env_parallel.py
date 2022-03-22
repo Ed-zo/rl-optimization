@@ -11,7 +11,6 @@ class Env:
         self.states = torch.zeros((self.count_of_envs, self.candidates * 2), device = device)
         self.current_step = 0
         self.order = torch.arange(count_of_envs, device = device) * candidates * 2
-        self.prev_obj = torch.zeros((self.count_of_envs), device=self.device)
 
         f = open(path + '/D.txt', "r")
         lines = f.read().split('\n')
@@ -34,7 +33,6 @@ class Env:
     def reset(self):
         self.states = torch.zeros((self.count_of_envs, self.candidates * 2), device = self.device)
         self.states[:, self.candidates:] = -1
-        self.prev_obj = torch.zeros((self.count_of_envs), device=self.device)
         self.current_step = 0
 
         return self.states.clone(), (1 - self.states[:, :self.candidates])
@@ -76,16 +74,11 @@ class Env:
         mins = self.compute_mins()
         self.states[:, self.candidates:] = mins.indices / self.candidates
 
-        obj = self.compute_objective_function(mins)
-
-        if(self.current_step == 1):
-            rewards = torch.zeros((self.count_of_envs), device=self.device)
-        elif(terminal):
-            rewards = (obj / -100000) + 0.5
+        if(terminal):
+            obj = self.compute_objective_function(mins)
+            rewards = obj / -100000
         else:
-            rew = (self.prev_obj - obj)
-            rewards = rew / 1000000
-
-        self.prev_obj = obj
+            obj = None
+            rewards = torch.zeros((self.count_of_envs), device=self.device)
 
         return self.states.clone(), (1 - self.states[:, :self.candidates]), rewards, terminal, {'obj': obj}
