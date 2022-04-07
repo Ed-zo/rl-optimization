@@ -54,5 +54,15 @@
         "31": 21594,
         "63": 11125,
         "105": 5594
+    },
+    "1792": {
+        "name": "Zapadne a stredne Slovensko",
+        "short": "ZS-SR",
+        "180": 108993
+    },
+    "2916": {
+        "name": "Slovenska republika",
+        "short": "SR",
+        "273": 161448
     }
 }
