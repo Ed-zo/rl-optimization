@@ -1,4 +1,6 @@
 import torch
+import numpy as np
+from torch.profiler import record_function
 
 class Env:
     def __init__(self, p, candidates, count_of_envs, path, device):
@@ -10,16 +12,13 @@ class Env:
         self.distances = torch.zeros((self.candidates, self.candidates), device = device)
         self.states = torch.zeros((self.count_of_envs, self.candidates), device = device)
         self.current_step = 0
+        self.ordr = torch.arange(candidates, device = device).repeat((self.count_of_envs, 1))
         self.order = torch.arange(count_of_envs, device = device) * candidates
 
-        f = open(path + '/D.txt', "r")
-        lines = f.read().split('\n')
-        f.close()
+        arr = np.loadtxt(path + '/D.txt', delimiter=';')
+        self.distances = torch.tensor(arr, device = device)
 
-        for i in range(candidates):
-            values = lines[i].split(';')
-            for j in range(candidates):
-                self.distances[i, j] = float(values[j])
+        self.max_actions = torch.tensor((count_of_envs, 1), device=device)
 
         f = open(path + '/C.txt', "r")
         lines = f.read().split('\n')
@@ -31,8 +30,9 @@ class Env:
     def reset(self):
         self.states = torch.zeros((self.count_of_envs, self.candidates), device = self.device)
         self.prev_obj = torch.zeros((self.count_of_envs), device=self.device)
+        self.max_actions = torch.zeros((self.count_of_envs, 1), device=self.device)
         self.current_step = 0
-        return self.states.clone()
+        return self.states.clone(), (1 - self.states)
 
     def compute_objective_function(self):
         if self.current_step == 0:
@@ -43,7 +43,7 @@ class Env:
         #Distance mask but repeated for every env
         dist = self.distances.repeat((self.count_of_envs, 1))
         #Set big number for non-built ones so Min doesnt pick them
-        dist[built_mask] = 10000
+        dist[built_mask] = 100000
         dist = dist.reshape((self.count_of_envs, self.candidates, self.candidates))
         #Find mins in every row
         mins = torch.min(dist, 2)
@@ -54,27 +54,35 @@ class Env:
         return sum
 
     def step(self, actions):
-        self.states = self.states.view(-1)
-        indices = self.order + actions.view(-1)
-        self.states[indices] = 1
-        self.states = self.states.view(-1, self.candidates)
-        self.current_step += 1
-        terminal = self.current_step == self.P
-        
-        # obj = self.compute_objective_function()
+        with record_function("Step"):
+            self.states = self.states.view(-1)
+            indices = self.order + actions.view(-1)
+            self.states[indices] = 1
+            self.states = self.states.view(-1, self.candidates)
+            self.current_step += 1
+            terminal = self.current_step == self.P
+            
+            # obj = self.compute_objective_function()
 
-        # if(self.current_step == 1):
-        #     rewards = torch.zeros((self.count_of_envs), device=self.device)
-        # elif(terminal):
-        #     rewards = obj / -1000
-        # else:
-        #     rew = (self.prev_obj - obj)
-        #     rewards = rew / 10000
+            # if(self.current_step == 1):
+            #     rewards = torch.zeros((self.count_of_envs), device=self.device)
+            # # elif(terminal):
+            # #     rewards = obj / -10000
+            # else:
+            #     rew = (self.prev_obj - obj)
+            #     rewards = rew / 10000
 
-        # self.prev_obj = obj
+            # self.prev_obj = obj
 
-        if(terminal):
-            rewards = (self.compute_objective_function() / -10000) * terminal
-        else:
-            rewards = torch.zeros((self.count_of_envs), device=self.device)
-        return self.states.clone(), rewards, terminal
+            if (terminal):
+                m = self.states.sum(1) == self.P
+                rewards = (self.compute_objective_function() / -100000) * m
+                rewards = rewards - torch.ones((self.count_of_envs), device=self.device) * ~m
+            else:
+                rewards = torch.zeros((self.count_of_envs), device=self.device)
+
+            self.max_actions = torch.max(self.max_actions, actions)
+
+            mask = self.ordr >= self.max_actions
+
+            return self.states.clone(), mask, rewards, terminal

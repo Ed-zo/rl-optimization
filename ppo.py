@@ -71,7 +71,7 @@ class Agent:
         if seed is None:
             seed = [i for i in range(count_of_envs)]
 
-        observations = env.reset()
+        observations, mask = env.reset()
 
         scores, obj_scores, curr_scores = [], [], torch.zeros(count_of_envs, device = self.device)
         best_avg_score, best_score, best_obj, best_observation = -1e9, -1e9, 1e9, {}
@@ -79,9 +79,9 @@ class Agent:
         for iteration in range(first_iteration, count_of_iterations):
             if self.finish_training: break
             if iteration > 0 and iteration % int(count_of_iterations / 5) == 0:
-                #self.lr *= self.lr_decay
-                #for g in self.optimizer.param_groups:
-                #    g['lr'] = self.lr
+                self.lr *= self.lr_decay
+                for g in self.optimizer.param_groups:
+                    g['lr'] = self.lr
                 torch.save(self.model.state_dict(), 'models/' + self.name + '_' + str(iteration) + '.pt')
 
             mem_pred_values = torch.zeros((count_of_steps + 1, count_of_envs, 1))
@@ -97,10 +97,9 @@ class Agent:
                     logits, values = self.model(observations.to(self.device))
                 
                 #==== MASKING =====
-                action_mask = (1 - observations)
-                mem_mask[step] = action_mask
-                logits = torch.where(action_mask == 1., logits, torch.tensor(-1e+8).to(self.device))
-                #==== MASKING =====                
+                mem_mask[step] = mask
+                logits = torch.where(mask == 1., logits, torch.tensor(-1e+8).to(self.device))
+                #==== MASKING =====
 
                 mem_observations[step] = observations.clone()
                 probs, log_probs = F.softmax(logits, dim = -1), F.log_softmax(logits, dim = -1)
@@ -112,7 +111,7 @@ class Agent:
                 mem_pred_values[step] = values.cpu()
 
                 #==== Paralel env =====
-                observations, rewards, terminal = env.step(actions)
+                observations, mask, rewards, terminal = env.step(actions)
                 mem_rewards[step, :, 0] = rewards
                 curr_scores += rewards
 
@@ -136,7 +135,7 @@ class Agent:
                             'observation': list(map(int,observations[indices[0]].tolist()))
                         }
 
-                    observations = env.reset()
+                    observations, mask = env.reset()
                     avg_score = np.average(scores[-100:])
                     avg_obj = np.average(obj_scores[-100:])
 
