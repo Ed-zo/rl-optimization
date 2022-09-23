@@ -201,7 +201,7 @@ class Agent:
                     indices = perm[batch:batch+batch_size]
 
                     logits, values = self.model(mem_observations[indices].to(self.device))
-                    logits = torch.where(mem_mask[indices] == 1., logits, torch.tensor(-1e+8).to(self.device))  #Masking
+                    logits = torch.where(mem_mask[indices] == 1., logits, torch.tensor(-1e+8, device=self.device))  #Masking
                     probs, log_probs = F.softmax(logits, dim=-1), F.log_softmax(logits, dim=-1)
                     new_log_probs = log_probs.gather(1, mem_actions[indices])
                     entropy_loss = (log_probs * probs).sum(1, keepdim=True).mean()
