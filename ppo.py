@@ -79,9 +79,9 @@ class Agent:
         for iteration in range(first_iteration, count_of_iterations):
             if self.finish_training: break
             if iteration > 0 and iteration % int(count_of_iterations / 5) == 0:
-                #self.lr *= self.lr_decay
-                #for g in self.optimizer.param_groups:
-                #    g['lr'] = self.lr
+                self.lr *= self.lr_decay
+                for g in self.optimizer.param_groups:
+                   g['lr'] = self.lr
                 torch.save(self.model.state_dict(), 'models/' + self.name + '_' + str(iteration) + '.pt')
 
             mem_pred_values = torch.zeros((count_of_steps + 1, count_of_envs, 1))

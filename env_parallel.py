@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 class Env:
     def __init__(self, p, candidates, count_of_envs, path, device):
@@ -12,14 +13,8 @@ class Env:
         self.current_step = 0
         self.order = torch.arange(count_of_envs, device = device) * candidates * 2
 
-        f = open(path + '/D.txt', "r")
-        lines = f.read().split('\n')
-        f.close()
-
-        for i in range(candidates):
-            values = lines[i].split(';')
-            for j in range(candidates):
-                self.distances[i, j] = float(values[j])
+        arr = np.loadtxt(path + '/D.txt', delimiter=';')
+        self.distances = torch.tensor(arr, device = device)
 
         f = open(path + '/C.txt', "r")
         lines = f.read().split('\n')
@@ -43,7 +38,7 @@ class Env:
         #Distance mask but repeated for every env
         dist = self.distances.repeat((self.count_of_envs, 1))
         #Set big number for non-built ones so Min doesnt pick them
-        dist[built_mask] = 10000
+        dist[built_mask] = 100000
         dist = dist.reshape((self.count_of_envs, self.candidates, self.candidates))
         #Find mins in every row
         mins = torch.min(dist, 2)
