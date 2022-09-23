@@ -73,7 +73,7 @@ class Agent:
 
         observations, mask = env.reset()
 
-        scores, obj_scores, curr_scores,  = [], [], torch.zeros(count_of_envs, device = self.device)
+        scores, obj_scores, curr_scores = [], [], torch.zeros(count_of_envs, device = self.device)
         best_avg_score, best_score, best_obj, best_observation = -1e9, -1e9, 1e9, {}
 
         for iteration in range(first_iteration, count_of_iterations):
