@@ -5,7 +5,7 @@ from util import write_to_file
 import json
 
 class Agent:
-    def __init__(self, model, gamma = 0.99, entropy_loss_coef = 0.01, value_loss_coef = 0.5, epsilon = 0.1, lr = 0.001, lr_decay = 0.5, lr_steps = 500,
+    def __init__(self, model: torch.nn.Module, gamma = 0.99, entropy_loss_coef = 0.01, value_loss_coef = 0.5, epsilon = 0.1, lr = 0.001, lr_decay = 0.5, lr_steps = 500,
                  name = 'ppo', optim = 'Adam', weight_decay = 0.0001, device = 'cpu', td_steps = 10, results_path = 'results/'):
         self.device = device
         self.model = model
@@ -60,7 +60,7 @@ class Agent:
         print('Obj function: {0} State: {1} Rewards: {2}'.format(env.compute_objective_function()[0], list(map(int, observation[0].tolist())), rewards.item()))
            
 
-    def train(self, env, input_dim, count_of_envs, count_of_iterations, count_of_steps, batch_size, count_of_epochs = 4, first_iteration = 0, seed = None):
+    def train(self, env, input_dim: tuple, count_of_envs: int, count_of_iterations: int, count_of_steps: int, batch_size: int, count_of_epochs = 4, first_iteration = 0, seed = None):
         print('Training is starting')
         self.finish_training = False
         count_of_steps_per_iteration = count_of_steps * count_of_envs
@@ -79,9 +79,9 @@ class Agent:
         for iteration in range(first_iteration, count_of_iterations):
             if self.finish_training: break
             if iteration > 0 and iteration % int(count_of_iterations / 5) == 0:
-                #self.lr *= self.lr_decay
-                #for g in self.optimizer.param_groups:
-                #    g['lr'] = self.lr
+                self.lr *= self.lr_decay
+                for g in self.optimizer.param_groups:
+                   g['lr'] = self.lr
                 torch.save(self.model.state_dict(), 'models/' + self.name + '_' + str(iteration) + '.pt')
 
             mem_pred_values = torch.zeros((count_of_steps + 1, count_of_envs, 1))
@@ -202,7 +202,7 @@ class Agent:
                     indices = perm[batch:batch+batch_size]
 
                     logits, values = self.model(mem_observations[indices].to(self.device))
-                    logits = torch.where(mem_mask[indices] == 1., logits, torch.tensor(-1e+8).to(self.device))  #Masking
+                    logits = torch.where(mem_mask[indices] == 1., logits, torch.tensor(-1e+8, device = self.device))  #Masking
                     probs, log_probs = F.softmax(logits, dim=-1), F.log_softmax(logits, dim=-1)
                     new_log_probs = log_probs.gather(1, mem_actions[indices])
                     entropy_loss = (log_probs * probs).sum(1, keepdim=True).mean()

@@ -74,7 +74,8 @@ class Env:
         # self.prev_obj = obj
 
         if(terminal):
-            rewards = (self.compute_objective_function() / -10000) * terminal
+            rewards = (self.compute_objective_function() / -100000) * terminal
         else:
             rewards = torch.zeros((self.count_of_envs), device=self.device)
+
         return self.states.clone(), rewards, terminal
