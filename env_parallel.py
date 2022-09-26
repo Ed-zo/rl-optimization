@@ -11,7 +11,8 @@ class Env:
         self.distances = torch.zeros((self.candidates, self.candidates), device = device)
         self.states = torch.zeros((self.count_of_envs, self.candidates * 2), device = device)
         self.current_step = 0
-        self.order = torch.arange(count_of_envs, device = device) * candidates * 2
+        self.buildOrder = torch.arange(count_of_envs, device = device) * candidates
+        self.actionOrder = torch.arange(count_of_envs, device = device) * candidates * 2
 
         arr = np.loadtxt(path + '/D.txt', delimiter=';')
         self.distances = torch.tensor(arr, device = device)
@@ -30,6 +31,8 @@ class Env:
         self.states[:, self.candidates:] = -1
         self.current_step = 0
 
+        self.dist = self.distances.repeat((self.count_of_envs, 1)) + 100
+
         return self.states.clone(), (1 - self.states[:, :self.candidates])
 
     def compute_mins(self):
@@ -45,12 +48,9 @@ class Env:
 
         return mins
 
-    def compute_objective_function(self, mins=None):
+    def compute_objective_function(self, mins):
         if self.current_step == 0:
             return 0
-
-        if mins is None:
-            mins = self.compute_mins()
 
         #Objective function
         obj = mins.values * self.customers
@@ -60,13 +60,18 @@ class Env:
 
     def step(self, actions):
         self.states = self.states.view(-1)
-        indices = self.order + actions.view(-1)
+        indices = self.actionOrder + actions.view(-1)
         self.states[indices] = 1
         self.states = self.states.view(-1, self.candidates * 2)
         self.current_step += 1
         terminal = self.current_step == self.P
         
-        mins = self.compute_mins()
+        indices = self.buildOrder + actions.view(-1)
+        self.dist[indices] -= 100
+        s = self.dist.reshape((self.count_of_envs, self.candidates, self.candidates))
+        mins = torch.min(s, 1)
+
+        # mins = self.compute_mins()
         self.states[:, self.candidates:] = mins.indices / self.candidates
 
         if(terminal):
