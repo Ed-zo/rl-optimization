@@ -1,0 +1,10 @@
+Data
+	- súbory chargers - informácie o nabíjačkách
+	- súbory spoje_id - informácie o spojoch
+	- súbory ChEvents - informácie o nabíjacích udalostiach
+	- súbory Tij - matica časových vzdialeností medzi koncovou zastávkou spoja i a začiatočnou zastávkou spoja j (čas presunu medzi i a j)
+	- súbory Tir - matica časových vzdialeností medzi koncovou zastávkou spoja i a nabíjačkou r (čas presunu medzi i a r)
+	- súbory Tri - matica časových vzdialeností medzi nabíjačkou r začiatočnou zastávkou spoja i (čas presunu medzi r a i)
+	- súbory Cij - matica spotreby medzi koncovou zastávkou spoja i a začiatočnou zastávkou spoja j (spotreba na presun medzi i a j)
+	- súbory Cir - matica spotreby medzi koncovou zastávkou spoja i a nabíjačkou r (spotreba na presun medzi i a r)
+	- súbory Cri - matica spotreby medzi nabíjačkou r začiatočnou zastávkou spoja i (spotreba na presun medzi r a i)

@@ -1,0 +1,45 @@
+ID zastavka;Nazov zastavka
+112;Kvaèalova, DPMŽ
+93;Matice slovenskej
+92;Fatranská
+77;Jaseòová
+49;Stodolova
+119;Carrefour
+42;Železnièná stanica
+38;Štefánikovo námestie
+23;Hálkova
+96;Sv. Cyrila a Metoda
+160;Bytèica
+75;Zvolenská
+230;Bernolákova
+37;Spanyolova, nemocnica
+25;Hurbanova
+45;Chlmecká
+1;Bánová, Colnica
+43;Bytèianska
+4;Námestie.Sv. J. Bosca
+11;Brodno
+17;Námestie hrdinov
+87;Magoèovská
+82;Priehradná
+24;Hollého
+28;Košická, TESCO hyp.
+200;KIA site
+207;Autobusové nástupište
+72;Rosinská, VÚVT
+58;Kamenná, PRIUS
+60;Kamenná, obchodné centrum
+115;Zástranie, Stará dedina
+159;Žilinská Lehota
+14;Dolná
+99;Vrania
+501;Univerzitná
+9;Vysokoškolákov, plaváreò
+66;Rybné námestie
+63;Asanaèný podnik
+31;Na Horevaží, TESCO hyper.
+114;Pietna, Krematórium
+202;Mobis
+289;Vzdelávacie centrum
+290;Varín, žel. stanica
+0;Depo-Autobusy
