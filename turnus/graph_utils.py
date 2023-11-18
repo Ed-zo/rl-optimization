@@ -23,7 +23,7 @@ def build_edge_connections(time_matrix_path: str, start_times: np.array, finish_
 
     possible_connection = np.where(transport_times <= start_times)
 
-    return torch.tensor(np.array(possible_connection))
+    return torch.tensor(np.array(possible_connection)).to(torch.long)
 
 # Normalize and convert dataframe column (Series) into a tensor
 class NumberNormEncoder:
@@ -33,15 +33,13 @@ class NumberNormEncoder:
     def __call__(self, df):
         return torch.from_numpy(((df - df.mean()) / df.std()).values).view(-1, 1).to(self.dtype)
 
-def load_graph(path: set):
+def load_graph(path: str):
     nodes, mapping, df = load_node_csv(f'{path}/tasks.csv', 'Index', 
                                {name: NumberNormEncoder() for name in ['ZastavkaStart', 'ZastavkaFinish', 'CasStart', 'CasFinish', 'Vzdialenost']}, 
                                sep=';')
 
     edge_connections = build_edge_connections(f'{path}/Tij.csv', df['CasStart'].values, df['CasFinish'].values)
 
-    data = Data(x=nodes, edge_index=edge_connections)
+    data = Data(x=nodes.to(torch.float), edge_index=edge_connections)
 
-    add_state = T.Constant(0)
-
-    return add_state(data)
+    return data
