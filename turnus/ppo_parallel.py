@@ -16,11 +16,12 @@ def worker(connection, env_params, env_func, count_of_iterations, count_of_envs,
     observations, masks = list(map(list, zip(*[env.reset() for env in envs])))
     game_score = np.zeros(count_of_envs)
 
+    mem_observations = GraphStore((count_of_steps, count_of_envs))
+    mem_masks = torch.zeros((count_of_steps, count_of_envs, masks[0].shape[0]))
     mem_log_probs = torch.zeros((count_of_steps, count_of_envs, 1))
     mem_actions = torch.zeros((count_of_steps, count_of_envs, 1), dtype=torch.long)
     mem_values = torch.zeros((count_of_steps + 1, count_of_envs, 1))
     mem_rewards = torch.zeros((count_of_steps, count_of_envs, 1))
-    mem_masks = torch.zeros((count_of_steps, count_of_envs, masks[0].shape[0]))
 
     for iteration in range(count_of_iterations):
         mem_non_terminals = torch.ones((count_of_steps, count_of_envs, 1))
@@ -35,6 +36,8 @@ def worker(connection, env_params, env_func, count_of_iterations, count_of_envs,
             actions = probs.multinomial(num_samples=1)
             log_probs = F.log_softmax(logits, dim=-1).gather(1, actions)
 
+            mem_observations[step] = observations
+            mem_masks[step] = masks
             mem_log_probs[step] = log_probs
             mem_actions[step] = actions
             mem_values[step] = values
@@ -69,7 +72,7 @@ def worker(connection, env_params, env_func, count_of_iterations, count_of_envs,
             values[step] = t_gae + mem_values[step]
             advantages[step] = t_gae.clone()
 
-        connection.send([mem_log_probs, mem_actions, values, advantages, scores])                                #5 A
+        connection.send([mem_observations, mem_masks, mem_log_probs, mem_actions, values, advantages, scores])                                #5 A
     connection.recv()
     connection.close()
 
@@ -170,12 +173,13 @@ class Agent:
             for conn_idx in range(count_of_processes):
                 connections[conn_idx].send(values[conn_idx])                                        #4 A
 
-            mem_observations, mem_actions, mem_log_probs, mem_target_values, mem_advantages, end_games = [], [], [], [], [], []
+            mem_observations, mem_masks, mem_actions, mem_log_probs, mem_target_values, mem_advantages, end_games = [], [], [], [], [], [], []
 
             for connection in connections:
-                observations, actions, log_probs, target_values, advantages, score_of_end_games = connection.recv()     #5 B
+                observations, masks, actions, log_probs, target_values, advantages, score_of_end_games = connection.recv()     #5 B
                 
                 mem_observations.append(observations)
+                mem_masks.append(masks)
                 mem_actions.append(actions)
                 mem_log_probs.append(log_probs)
                 mem_target_values.append(target_values)
