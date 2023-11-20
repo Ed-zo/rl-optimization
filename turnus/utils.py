@@ -1,7 +1,9 @@
 import math
+import os
 import numpy as np
 
 def write_to_file(log, filename):
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
     f = open(filename, "w")
     f.write(log)
     f.close()
@@ -62,3 +64,7 @@ class MovingAverageScore:
 
     def get_count_of_episodes(self):
         return self.count_of_episodes
+    
+
+def flatten_list(list: list) -> list:
+    return [item for sublist in list for item in sublist]

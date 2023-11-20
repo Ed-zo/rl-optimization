@@ -70,7 +70,7 @@ if __name__ == '__main__':
     net = GCN(env.state_space(), env.action_space()).to(device)
     # net = torch.load('models/p_med_last.pt')
 
-    agent = Agent(net, 'Adam', device=device, name='ppo', path='results')
+    agent = Agent(net, 'Adam', device=device, name='ppo', path='results/')
 
     agent.train([graph, device], Env, graph.num_nodes)
 

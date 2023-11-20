@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch.multiprocessing import Process, Pipe
 from torch_geometric.data import Batch
 from graph_store import GraphStore
-from utils import MovingAverageScore, write_to_file
+from utils import MovingAverageScore, write_to_file, flatten_list
 import ipdb
 
 
@@ -14,10 +14,11 @@ def worker(connection, env_params, env_func, count_of_iterations, count_of_envs,
     envs = [env_func(*env_params) for _ in range(count_of_envs)]
     # observations = GraphStore((count_of_steps, count_of_envs))
     observations, masks = list(map(list, zip(*[env.reset() for env in envs])))
+    masks = torch.stack(masks)
     game_score = np.zeros(count_of_envs)
 
     mem_observations = GraphStore((count_of_steps, count_of_envs))
-    mem_masks = torch.zeros((count_of_steps, count_of_envs, masks[0].shape[0]))
+    mem_masks = torch.zeros((count_of_steps, count_of_envs, masks.shape[1]))
     mem_log_probs = torch.zeros((count_of_steps, count_of_envs, 1))
     mem_actions = torch.zeros((count_of_steps, count_of_envs, 1), dtype=torch.long)
     mem_values = torch.zeros((count_of_steps + 1, count_of_envs, 1))
@@ -29,7 +30,7 @@ def worker(connection, env_params, env_func, count_of_iterations, count_of_envs,
 
         # Hranie prostredia
         for step in range(count_of_steps):
-            connection.send((observations, masks))                                                              #1 A
+            connection.send(observations)                                                                       #1 A
             logits, values = connection.recv()                                                                  #2 B
             logits = torch.where(masks, logits, torch.tensor(-1e+8))
             probs = F.softmax(logits, dim=-1)
@@ -58,7 +59,7 @@ def worker(connection, env_params, env_func, count_of_iterations, count_of_envs,
                 observations[idx] = observation
                 masks[idx] = mask
 
-        connection.send((observations, masks))                                                                   #3 A
+        connection.send(observations)                                                                           #3 A
         mem_values[step + 1] = connection.recv()                                                                 #4 B
         mem_rewards = torch.clamp(mem_rewards, -1.0, 1.0)
         advantages = torch.zeros((count_of_steps, count_of_envs, 1))
@@ -119,6 +120,9 @@ class Agent:
 
         logs_score = 'iteration,episode,avg_score,best_avg_score,best_score'
         logs_loss = 'iteration,episode,policy,value,entropy'
+        count_of_episodes, best_score, best_avg_score, scores = 0, -1e10, -1e10, []
+
+        mem_dim = (count_of_processes, count_of_steps, count_of_envs)
 
         score = MovingAverageScore()
         buffer_size = count_of_processes * count_of_envs * count_of_steps
@@ -134,24 +138,14 @@ class Agent:
             processes.append(process)
             process.start()
 
-        mem_dim = (count_of_processes, count_of_steps, count_of_envs)
-        # mem_observations = torch.zeros((mem_dim + input_dim), device=self.device)
-        mem_observations = GraphStore(mem_dim)
-        mem_actions = torch.zeros((*mem_dim, 1), device=self.device, dtype=torch.long)
-        mem_log_probs = torch.zeros((*mem_dim, 1), device=self.device)
-        mem_values = torch.zeros((*mem_dim, 1), device=self.device)
-        mem_advantages = torch.zeros((*mem_dim, 1), device=self.device)
-        # mem_masks = torch.zeros((count_of_steps, count_of_envs, masks[0].shape[0]))
 
         for iteration in range(count_of_iterations):
             for step in range(count_of_steps):
-                obs_msk = [conn.recv() for conn in connections]                                     #1 B
-                observations, masks = list(map(list, zip(*obs_msk)))
-                # masks = torch.stack(masks).to(self.device)
-                mem_observations[:, step] = observations
+                observations = [conn.recv() for conn in connections]                                #1 B
 
                 with torch.no_grad():
-                    observations = Batch.from_data_list([*observations[0], *observations[1]]).to(self.device)
+                    observations = flatten_list(observations)
+                    observations = Batch.from_data_list(observations).to(self.device)
                     logits, values = self.model(observations)
 
                 # If you selected actions in the main process, your iteration
@@ -163,22 +157,22 @@ class Agent:
                     connections[idx].send((logits[idx], values[idx]))                               #2 A
 
             observations = [conn.recv() for conn in connections]                                    #3 B
-            Batch.from_data_list(observations).to(self.device)
-            # observations = torch.stack(observations).to(self.device)
+            observations = flatten_list(observations)
+            observations = Batch.from_data_list(observations).to(self.device)
 
             with torch.no_grad():
-                _, values = self.model(torch.stack(observations).to(self.device).view(-1, *input_dim))
+                _, values = self.model(observations)
                 values = values.view(-1, count_of_envs, 1).cpu()
 
             for conn_idx in range(count_of_processes):
                 connections[conn_idx].send(values[conn_idx])                                        #4 A
 
-            mem_observations, mem_masks, mem_actions, mem_log_probs, mem_target_values, mem_advantages, end_games = [], [], [], [], [], [], []
+            mem_observations, mem_masks, mem_log_probs, mem_actions, mem_target_values, mem_advantages, end_games = [], [], [], [], [], [], []
 
             for connection in connections:
-                observations, masks, actions, log_probs, target_values, advantages, score_of_end_games = connection.recv()     #5 B
+                observations, masks, log_probs, actions, target_values, advantages, score_of_end_games = connection.recv()     #5 B
                 
-                mem_observations.append(observations)
+                mem_observations.extend(observations.flatten())
                 mem_masks.append(masks)
                 mem_actions.append(actions)
                 mem_log_probs.append(log_probs)
@@ -199,30 +193,31 @@ class Agent:
                 avg_score = np.average(scores)
                 prev_avg_score = best_avg_score
                 best_avg_score = max(best_avg_score, avg_score)
-                logs += '\n' + str(iteration) + ',' + str(count_of_episodes) + ',' + str(avg_score) + ',' + str(best_score) + ',' + str(best_avg_score)
+                # logs += '\n' + str(iteration) + ',' + str(count_of_episodes) + ',' + str(avg_score) + ',' + str(best_score) + ',' + str(best_avg_score)
                 if iteration % 1 == 0:
                     print('iteration', iteration, '\tepisode', count_of_episodes, '\tavg score', avg_score, '\tbest score', best_score, '\tbest avg score', best_avg_score)
 
-            # mem_observations = torch.stack(mem_observations).to(self.device).view((-1, ) + input_dim)
-            mem_observations = mem_observations.to(self.device)
+            mem_observations = Batch.from_data_list(mem_observations).to(self.device)
+            mem_masks = torch.stack(mem_masks).to(self.device).bool().view(-1, count_of_actions)
             mem_actions = torch.stack(mem_actions).to(self.device).view(-1, 1)
             mem_log_probs = torch.stack(mem_log_probs).to(self.device).view(-1, 1)
             mem_target_values = torch.stack(mem_target_values).to(self.device).view(-1, 1)
             mem_advantages = torch.stack(mem_advantages).to(self.device).view(-1, 1)
             mem_advantages = (mem_advantages - torch.mean(mem_advantages)) / (torch.std(mem_advantages) + 1e-5)
 
-            sum_policy_loss, sum_value_loss, sum_entropy_loss = 0, 0, 0
+            s_policy, s_value, s_entropy = 0, 0, 0
 
             for epoch in range(count_of_epochs):
                 perm = torch.randperm(buffer_size, device=self.device).view(-1, batch_size)
                 for idx in perm:
-                    logits, values = self.model(mem_observations[idx])
+                    logits, values = self.model(Batch.from_data_list(mem_observations[idx]))
+                    logits = torch.where(mem_masks[idx], logits, torch.tensor(-1e+8, device=self.device))
                     probs = F.softmax(logits, dim=-1)
                     log_probs = F.log_softmax(logits, dim=-1)
                     new_log_probs = log_probs.gather(1, mem_actions[idx])
 
                     entropy_loss = (log_probs * probs).sum(1, keepdim=True).mean()
-                    value_loss = F.mse_loss(values, mem_values[idx])
+                    value_loss = F.mse_loss(values, mem_target_values[idx])
 
                     ratio = torch.exp(new_log_probs - mem_log_probs[idx])
                     surr_policy = ratio * mem_advantages[idx]
@@ -242,12 +237,12 @@ class Agent:
                     self.optimizer.step()
 
 
-            logs_losses +=  '\n' + str(iteration) + ',' + str(len(scores)) + ',' + str(sum_policy_loss / count_of_losses) + ',' + str(sum_value_loss / count_of_losses) + ',' + str(sum_entropy_loss / count_of_losses)
-            if iteration % 1 == 0:
-                write_to_file(logs, self.results_path + 'data/' + self.name + '.txt')
-                write_to_file(logs_losses, self.results_path + 'data/' + self.name + '_loss.txt')
-                if best_avg_score > prev_avg_score:
-                    self.save_model()
+            # logs_losses +=  '\n' + str(iteration) + ',' + str(len(scores)) + ',' + str(sum_policy_loss / count_of_losses) + ',' + str(sum_value_loss / count_of_losses) + ',' + str(sum_entropy_loss / count_of_losses)
+            # if iteration % 1 == 0:
+            #     write_to_file(logs, self.results_path + 'data/' + self.name + '.txt')
+            #     write_to_file(logs_losses, self.results_path + 'data/' + self.name + '_loss.txt')
+            #     if best_avg_score > prev_avg_score:
+            #         self.save_model()
 
 
 

@@ -20,6 +20,19 @@ class GraphStore(object):
         
         self.data = _data
 
+    def flatten(self) -> list:
+        lst = []
+        self.__flatten(lst)
+        return lst
+        
+
+    def __flatten(self, lst: list) -> list:
+        if self.__leaf:
+            lst.extend(self.data)
+        else:
+            for item in self.data:
+                item.__flatten(lst)
+
     def __getitem__(self, key):
         if isinstance(key, tuple):
             if len(key) == 1:
@@ -40,6 +53,7 @@ class GraphStore(object):
         return str(self)
 
     def __setitem__(self, key, value):
+        nextKey = None
         if isinstance(key, tuple):
             nextKey = key[1:] if len(key) > 1 else None
             key = key[0]

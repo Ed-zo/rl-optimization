@@ -50,7 +50,7 @@ class Env:
         self.last_visited_node = action
 
         reward = 0 
-        terminal = False
+        terminal = self.vehicleID == MAX_VEHICLES
         # The vehicle has reached the depot
         if action == self.graph.num_nodes - 1:
             self.vehicleID += 1
@@ -73,7 +73,7 @@ class Env:
         terminal = terminal & (visited_mask.sum() == self.graph.num_nodes - 2).item()
 
         if terminal:
-            reward = -(self.vehicleID - 1)
+            reward = -self.vehicleID
 
 
         return self.graph.clone(), mask, reward, terminal, None
