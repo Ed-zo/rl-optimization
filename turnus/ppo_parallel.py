@@ -114,7 +114,7 @@ class Agent:
     def train(self, env_params, env_func, count_of_actions,
               count_of_iterations=10000, count_of_processes=2,
               count_of_envs=16, count_of_steps=128, count_of_epochs=4,
-              batch_size=512, input_dim=(4, 96, 96)):
+              batch_size=512):
 
         print('Training is starting')
 

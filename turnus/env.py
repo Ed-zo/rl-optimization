@@ -3,16 +3,13 @@ from torch_geometric.data import Data
 from torch_geometric.utils import k_hop_subgraph
 import torch_geometric.transforms as T
 
-MAX_VEHICLES = 50
-
-
-
 class Env:
     def __init__(self, graph: Data, device = 'cpu'):
         self.graph = graph.clone()
         self.device = device
         self.vehicleID = 1
         self.last_visited_node = 0
+        self.MAX_VEHICLES = graph.num_nodes
 
         # Add env state to the graph
         add_visited_flag = T.Constant(0)
@@ -45,12 +42,12 @@ class Env:
     # Return next state, mask, reward, and terminal state
     def step(self, action) -> (torch.Tensor, torch.Tensor):
         if action != self.graph.num_nodes - 1:
-            self.graph.x[action, self.visited_flag_index] = self.vehicleID / MAX_VEHICLES
+            self.graph.x[action, self.visited_flag_index] = self.vehicleID / self.MAX_VEHICLES
         
         self.last_visited_node = action
 
         reward = 0 
-        terminal = self.vehicleID == MAX_VEHICLES
+        terminal = False
         # The vehicle has reached the depot
         if action == self.graph.num_nodes - 1:
             self.vehicleID += 1
@@ -72,8 +69,11 @@ class Env:
         # All nodes are visited (except the depots)
         terminal = terminal & (visited_mask.sum() == self.graph.num_nodes - 2).item()
 
+        if self.vehicleID >= self.MAX_VEHICLES:
+            terminal = True
+
         if terminal:
-            reward = -self.vehicleID
+            reward = -(self.vehicleID / self.MAX_VEHICLES)
 
 
         return self.graph.clone(), mask, reward, terminal, None

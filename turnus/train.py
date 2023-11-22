@@ -70,8 +70,8 @@ if __name__ == '__main__':
     net = GCN(env.state_space(), env.action_space()).to(device)
     # net = torch.load('models/p_med_last.pt')
 
-    agent = Agent(net, 'Adam', device=device, name='ppo', path='results/')
+    agent = Agent(net, 'Adam', device=device, name='ppo', path='results/', gamma=1, epsilon=0.2, lr=0.001)
 
-    agent.train([graph, device], Env, graph.num_nodes)
+    agent.train([graph, device], Env, graph.num_nodes, count_of_iterations=800, count_of_steps=51*3, batch_size=816)
 
     # torch.save(net, 'models/save.net')
