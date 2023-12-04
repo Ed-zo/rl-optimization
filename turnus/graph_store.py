@@ -1,8 +1,5 @@
 
 
-from math import e
-
-
 class GraphStore(object):
 
     def __init__(self, shape):
