@@ -5,7 +5,7 @@ from torch.multiprocessing import Process, Pipe
 from torch_geometric.data import Batch
 from graph_store import GraphStore
 from utils import MovingAverageScore, write_to_file, flatten_list
-import ipdb
+# import ipdb
 
 
 def worker(connection, env_params, env_func, count_of_iterations, count_of_envs,
@@ -120,7 +120,7 @@ class Agent:
 
         logs_score = 'iteration,episode,avg_score,best_avg_score,best_score'
         logs_loss = 'iteration,episode,policy,value,entropy'
-        count_of_episodes, best_score, best_avg_score, scores = 0, -1e10, -1e10, []
+        count_of_episodes, best_score, best_avg_score, prev_avg_score, scores = 0, -1e10, -1e10, -1e10, []
 
         mem_dim = (count_of_processes, count_of_steps, count_of_envs)
 
@@ -193,7 +193,7 @@ class Agent:
                 avg_score = np.average(scores)
                 prev_avg_score = best_avg_score
                 best_avg_score = max(best_avg_score, avg_score)
-                # logs += '\n' + str(iteration) + ',' + str(count_of_episodes) + ',' + str(avg_score) + ',' + str(best_score) + ',' + str(best_avg_score)
+                logs_score += '\n' + str(iteration) + ',' + str(count_of_episodes) + ',' + str(avg_score) + ',' + str(best_avg_score) + ',' + str(best_score)
                 if iteration % 1 == 0:
                     print('iteration', iteration, '\tepisode', count_of_episodes, '\tavg score', avg_score, '\tbest score', best_score, '\tbest avg score', best_avg_score)
 
@@ -241,8 +241,7 @@ class Agent:
             # if iteration % 1 == 0:
             #     write_to_file(logs, self.results_path + 'data/' + self.name + '.txt')
             #     write_to_file(logs_losses, self.results_path + 'data/' + self.name + '_loss.txt')
-            #     if best_avg_score > prev_avg_score:
-            #         self.save_model()
+
 
 
 
@@ -255,6 +254,10 @@ class Agent:
             if iteration % 10 == 0:
                 write_to_file(logs_score, self.path + 'data/' + self.name + '.txt')
                 write_to_file(logs_loss, self.path + 'data/' + self.name + '_loss.txt')
+
+            if best_avg_score > prev_avg_score:
+                self.save_model(iteration)
+
         print('Training has ended, best avg score is ', score.get_best_avg_score())
 
         for connection in connections:
@@ -262,8 +265,8 @@ class Agent:
         for process in processes:
             process.join()
 
-    # def save_model(self):
-    #     torch.save(self.model.state_dict(), self.results_path + 'models/' + self.name + str(self.iteration) + '_ppo.pt')
+    def save_model(self, iteration):
+        torch.save(self.model.state_dict(), self.path + 'models/' + self.name + str(iteration) + '_ppo.pt')
 
 
     def load_model(self, path):

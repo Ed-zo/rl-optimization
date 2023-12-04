@@ -2,6 +2,7 @@ import torch
 from torch_geometric.data import Data
 from torch_geometric.utils import k_hop_subgraph
 import torch_geometric.transforms as T
+from utils import obj_to_reward
 
 class Env:
     def __init__(self, graph: Data, device = 'cpu'):
@@ -73,8 +74,7 @@ class Env:
             terminal = True
 
         if terminal:
-            reward = -(self.vehicleID / self.MAX_VEHICLES)
-
+            reward = obj_to_reward(self.vehicleID, 4, self.MAX_VEHICLES)
 
         return self.graph.clone(), mask, reward, terminal, None
         

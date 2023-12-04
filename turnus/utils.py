@@ -68,3 +68,9 @@ class MovingAverageScore:
 
 def flatten_list(list: list) -> list:
     return [item for sublist in list for item in sublist]
+
+def obj_to_reward(vehicles, min_vehicles, max_vehicles):
+    return -1 - (vehicles - max_vehicles) / ((max_vehicles - min_vehicles)/2)
+
+def reward_to_obj(reward, min_vehicles, max_vehicles):
+    return -(max_vehicles - min_vehicles) / 2 * (reward + 1) + max_vehicles
