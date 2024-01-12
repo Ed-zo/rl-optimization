@@ -1,10 +1,13 @@
+import os
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch.multiprocessing import Process, Pipe
+from torch.optim.lr_scheduler import LinearLR
+from torch.multiprocessing import Process, Pipe, set_start_method
 from torch_geometric.data import Batch
-from graph_store import GraphStore
-from utils import MovingAverageScore, write_to_file, flatten_list
+from utils.graph_store import GraphStore
+from utils.logger import AgentLogger, ScoreLogger
+from utils.utils import flatten_list
 # import ipdb
 
 
@@ -114,17 +117,14 @@ class Agent:
     def train(self, env_params, env_func, count_of_actions,
               count_of_iterations=10000, count_of_processes=2,
               count_of_envs=16, count_of_steps=128, count_of_epochs=4,
-              batch_size=512):
+              batch_size=512, score_transformer_fn = None):
 
         print('Training is starting')
 
-        logs_score = 'iteration,episode,avg_score,best_avg_score,best_score'
-        logs_loss = 'iteration,episode,policy,value,entropy'
-        count_of_episodes, best_score, best_avg_score, prev_avg_score, scores = 0, -1e10, -1e10, -1e10, []
+        loss_logger = AgentLogger(f'{self.path}/data/{self.name}_loss.csv', ['avg_score', 'policy', 'value', 'entropy', 'lr'])
+        score_logger = ScoreLogger(f'{self.path}/data/{self.name}.csv', score_transformer_fn=score_transformer_fn)
 
-        mem_dim = (count_of_processes, count_of_steps, count_of_envs)
-
-        score = MovingAverageScore()
+        lr_scheduler = LinearLR(self.optimizer, start_factor=1, end_factor=0.01, total_iters=int(count_of_iterations / 2))
         buffer_size = count_of_processes * count_of_envs * count_of_steps
         batches_per_iteration = count_of_epochs * buffer_size / batch_size
 
@@ -180,22 +180,7 @@ class Agent:
                 mem_advantages.append(advantages)
                 end_games.extend(score_of_end_games)
 
-            count_of_end_games = len(end_games)
-            if count_of_end_games > 0:
-                new_score = True
-                count_of_episodes += count_of_end_games
-                scores.extend(end_games)
-                best_score = max(best_score, np.max(end_games))
-
-                length = len(scores)
-                if length > 100:
-                    scores = scores[length - 100:]
-                avg_score = np.average(scores)
-                prev_avg_score = best_avg_score
-                best_avg_score = max(best_avg_score, avg_score)
-                logs_score += '\n' + str(iteration) + ',' + str(count_of_episodes) + ',' + str(avg_score) + ',' + str(best_avg_score) + ',' + str(best_score)
-                if iteration % 1 == 0:
-                    print('iteration', iteration, '\tepisode', count_of_episodes, '\tavg score', avg_score, '\tbest score', best_score, '\tbest avg score', best_avg_score)
+            episode, avg_score, better_score = score_logger.log(iteration, end_games)
 
             mem_observations = Batch.from_data_list(mem_observations).to(self.device)
             mem_masks = torch.stack(mem_masks).to(self.device).bool().view(-1, count_of_actions)
@@ -236,29 +221,18 @@ class Agent:
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.5)
                     self.optimizer.step()
 
+            lr_scheduler.step()
 
-            # logs_losses +=  '\n' + str(iteration) + ',' + str(len(scores)) + ',' + str(sum_policy_loss / count_of_losses) + ',' + str(sum_value_loss / count_of_losses) + ',' + str(sum_entropy_loss / count_of_losses)
-            # if iteration % 1 == 0:
-            #     write_to_file(logs, self.results_path + 'data/' + self.name + '.txt')
-            #     write_to_file(logs_losses, self.results_path + 'data/' + self.name + '_loss.txt')
+            loss_logger.log(iteration, episode, avg_score, 
+                            s_policy / batches_per_iteration, 
+                            s_value / batches_per_iteration,
+                            s_entropy / batches_per_iteration,
+                            self.optimizer.param_groups[0]['lr'])
 
-
-
-
-            logs_loss += '\n' + str(iteration) + ',' \
-                         + str(avg_score) + ',' \
-                         + str(s_policy / batches_per_iteration) + ',' \
-                         + str(s_value / batches_per_iteration) + ',' \
-                         + str(s_entropy / batches_per_iteration)
-
-            if iteration % 10 == 0:
-                write_to_file(logs_score, self.path + 'data/' + self.name + '.txt')
-                write_to_file(logs_loss, self.path + 'data/' + self.name + '_loss.txt')
-
-            if best_avg_score > prev_avg_score:
+            if better_score:
                 self.save_model(iteration)
 
-        print('Training has ended, best avg score is ', score.get_best_avg_score())
+        print('Training has ended, best avg score is ', score_logger.mva.get_best_avg_score())
 
         for connection in connections:
             connection.send(1)
@@ -266,8 +240,10 @@ class Agent:
             process.join()
 
     def save_model(self, iteration):
-        torch.save(self.model.state_dict(), self.path + 'models/' + self.name + str(iteration) + '_ppo.pt')
+        os.makedirs(f'{self.path}models/', exist_ok=True)
+        torch.save(self.model.state_dict(), f'{self.path}models/{self.name}_{str(iteration)}.pt')
 
 
     def load_model(self, path):
+        print('Loading model from', path)
         self.model.load_state_dict(torch.load(path))

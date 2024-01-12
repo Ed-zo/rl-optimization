@@ -43,3 +43,10 @@ def load_graph(path: str):
     data = Data(x=nodes.to(torch.float), edge_index=edge_connections)
 
     return data
+
+def add_graph_feature(graph: Data, value = 0):
+    add_constant_fn = T.Constant(value)
+    graph = add_constant_fn(graph)
+    flag_index = graph.num_node_features - 1
+
+    return graph, flag_index

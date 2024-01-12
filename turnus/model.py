@@ -9,16 +9,14 @@ class GCN(torch.nn.Module):
         self.state_size = state_size
         self.node_count = node_count
 
-        self.conv1 = GCNConv(state_size, 32)
-        self.conv2 = GCNConv(32, 32)
-        self.conv3 = GCNConv(32, 32)
-        self.conv4 = GCNConv(32, 32)
-        self.conv5 = GCNConv(32, 32)
+        self.conv1 = GCNConv(state_size, 16)
+        self.conv2 = GCNConv(16, 16)
+        self.conv3 = GCNConv(16, 16)
 
-        self.fc_p1 = nn.Linear(node_count * self.conv5.out_channels, 256)
+        self.fc_p1 = nn.Linear(node_count * self.conv3.out_channels, 256)
         self.fc_p2 = nn.Linear(256, node_count)
 
-        self.fc_v1 = nn.Linear(node_count * self.conv5.out_channels, 256)
+        self.fc_v1 = nn.Linear(node_count * self.conv3.out_channels, 256)
         self.fc_v2 = nn.Linear(256, 1)
 
         self.apply(self._init_weights)
@@ -36,12 +34,8 @@ class GCN(torch.nn.Module):
         x = F.relu(x)
         x = self.conv2(x, edge_index)
         x = F.relu(x)
+        x = F.dropout(x, training=self.training)
         x = self.conv3(x, edge_index)
-        x = F.relu(x)
-        x = self.conv4(x, edge_index)
-        x = F.relu(x)
-        # x = F.dropout(x, training=self.training)
-        x = self.conv5(x, edge_index)
         x = F.relu(x)
 
         x = x.view(-1, self.fc_p1.in_features)

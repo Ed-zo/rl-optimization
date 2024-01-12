@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 import numpy as np
-from turnus.utils import write_to_file
+from turnus.utils.utils import write_to_file
 import json
 
 class Agent:
