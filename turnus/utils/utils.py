@@ -1,6 +1,7 @@
 import math
 import os
 import numpy as np
+import torch
 
 def write_to_file(log, filename):
     os.makedirs(os.path.dirname(filename), exist_ok=True)
@@ -74,3 +75,24 @@ def obj_to_reward(vehicles, min_vehicles, max_vehicles):
 
 def reward_to_obj(reward, min_vehicles, max_vehicles):
     return -(max_vehicles - min_vehicles) / 2 * (reward + 1) + max_vehicles
+
+class RunningStats:
+    def __init__(self, shape):
+        self.mean         = torch.zeros(shape, dtype=torch.float32)
+        self.pwr_sum_mean = torch.zeros(shape, dtype=torch.float32)
+
+        self.count = 0
+
+    def update(self, x):  
+         
+        self.count+= 1
+
+        self.mean += (x.mean(axis=0) - self.mean) / self.count
+
+        self.pwr_sum_mean += (x**2 - self.pwr_sum_mean).mean(axis=0) / self.count
+
+        var = self.pwr_sum_mean - self.mean**2
+        var = torch.maximum(var, torch.zeros_like(var) + 10**-3)
+        self.std = var**0.5
+
+        return self.mean, self.std
