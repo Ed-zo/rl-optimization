@@ -17,19 +17,23 @@ if __name__ == '__main__':
     print('device: ', device)
     start_date = datetime.datetime.now()
     print('Start time:', start_date)
-    graph = graph_utils.load_graph('data/1')
 
-    env = Env(graph, device)
+    problem = 2
+    problem_path = f'data/{problem}'
+
+    graph, optimal_vehicles = graph_utils.load_problem(problem_path)
+
+    env = Env(graph, device, optimal_vehicles)
 
     net = GCNPolicy(env.state_space(), env.action_space()).to(device)
     rnd_net = RNDModel(env.state_space(), env.action_space()).to(device)
     net.train()
     rnd_net.train()
 
-    agent = Agent(net, rnd_net, device=device, name='ppo_4', path='results/', ext_gamma=1, epsilon=0.2, lr=0.001)
+    agent = Agent(net, rnd_net, device=device, name='ppo_problem_2', path='results/', ext_gamma=1, epsilon=0.2, lr=0.001)
 
     agent.train([graph], Env, graph.num_nodes, count_of_iterations=10000, count_of_processes=2, count_of_envs=16, 
-                count_of_steps=env.action_space()*2, batch_size=816, score_transformer_fn= env.reward_to_score_transformer())
+                count_of_steps=env.action_space(), batch_size=632, score_transformer_fn= env.reward_to_score_transformer())
 
     end_date = datetime.datetime.now()
     print('End time:', end_date)

@@ -1,3 +1,4 @@
+import os
 from torch_geometric.data import Data
 import torch_geometric.transforms as T
 import torch
@@ -50,3 +51,14 @@ def add_graph_feature(graph: Data, value = 0):
     flag_index = graph.num_node_features - 1
 
     return graph, flag_index
+
+def load_problem(path: str):
+    graph = load_graph(path)
+
+    optimal_file = os.path.join(path, 'optimal.txt')
+    optimal_result = None
+    if os.path.exists(optimal_file):
+        with open(optimal_file, 'r') as w:
+            optimal_result = int(w.readline())
+
+    return graph, optimal_result

@@ -1,3 +1,4 @@
+import json
 import os
 import numpy as np
 import torch
@@ -19,7 +20,8 @@ def worker(connection, env_params, env_func, count_of_iterations, count_of_envs,
     # observations = GraphStore((count_of_steps, count_of_envs))
     observations, masks = list(map(list, zip(*[env.reset() for env in envs])))
     masks = torch.stack(masks)
-    game_score = np.zeros(count_of_envs)
+    game_ext_rewards = np.zeros(count_of_envs)
+    game_int_rewards = torch.zeros(count_of_envs)
 
     mem_observations = GraphStore((count_of_steps, count_of_envs))
     mem_masks = torch.zeros((count_of_steps, count_of_envs, masks.shape[1]))
@@ -32,7 +34,8 @@ def worker(connection, env_params, env_func, count_of_iterations, count_of_envs,
 
     for iteration in range(count_of_iterations):
         mem_non_terminals = torch.ones((count_of_steps, count_of_envs, 1))
-        scores = []
+        ext_scores = []
+        int_scores = []
 
         # Hranie prostredia
         for step in range(count_of_steps):
@@ -50,19 +53,23 @@ def worker(connection, env_params, env_func, count_of_iterations, count_of_envs,
             mem_ext_values[step] = ext_values
             mem_int_values[step] = int_values
             mem_int_rewards[step] = int_rewards
+            
+            game_int_rewards += int_rewards.squeeze(-1)
 
             # Vykonanie jedneho kroku v kazdom prostredi v ramci workera
             for idx in range(count_of_envs):
                 observation, mask, ext_reward, terminal, _ = envs[idx].step(actions[idx, 0].item())
                 mem_ext_rewards[step, idx, 0] = ext_reward
-                game_score[idx] += ext_reward
-                if ext_reward < 0:
-                    mem_non_terminals[step, idx, 0] = 0
+                game_ext_rewards[idx] += ext_reward
+                # if ext_reward < 0:
+                    # mem_non_terminals[step, idx, 0] = 0
 
                 if terminal:
                     mem_non_terminals[step, idx, 0] = 0
-                    scores.append(game_score[idx])
-                    game_score[idx] = 0
+                    ext_scores.append(game_ext_rewards[idx])
+                    int_scores.append(game_int_rewards[idx].item())
+                    game_ext_rewards[idx] = 0
+                    game_int_rewards[idx] = 0
                     observation, mask = envs[idx].reset()
                 observations[idx] = observation
                 masks[idx] = mask
@@ -101,7 +108,7 @@ def worker(connection, env_params, env_func, count_of_iterations, count_of_envs,
             int_values[step] = int_gae + mem_int_values[step]
             int_advantages[step] = int_gae.clone()
 
-        connection.send([mem_observations, mem_masks, mem_log_probs, mem_actions, ext_values, int_values, ext_advantages, int_advantages, scores])                                #5 A
+        connection.send([mem_observations, mem_masks, mem_log_probs, mem_actions, ext_values, int_values, ext_advantages, int_advantages, ext_scores, int_scores])                                #5 A
     connection.recv()
     connection.close()
 
@@ -142,7 +149,7 @@ class Agent:
         loss_logger = AgentLogger(f'{self.path}/data/{self.name}_loss.csv', ['avg_score', 'policy', 'ext_value', 'int_value', 'entropy', 'rnd', 'lr'])
         score_logger = ScoreLogger(f'{self.path}/data/{self.name}.csv', score_transformer_fn=score_transformer_fn)
 
-        lr_scheduler = LinearLR(self.optimizer, start_factor=1, end_factor=0.01, total_iters=int(count_of_iterations / 2))
+        lr_scheduler = LinearLR(self.optimizer, start_factor=1, end_factor=0.0001, total_iters=int(count_of_iterations / 2))
         buffer_size = count_of_processes * count_of_envs * count_of_steps
         batches_per_iteration = count_of_epochs * buffer_size / batch_size
 
@@ -168,11 +175,11 @@ class Agent:
                     '''
                     RND - intrinsic rewards
                     '''
-                    rnd_pred, rnd_targ = self.rnd_model(observations)
+                    # rnd_pred, rnd_targ = self.rnd_model(observations)
 
-                    int_rewards = (rnd_pred - rnd_targ) ** 2
-                    int_rewards = int_rewards.sum(dim=1) / 2
-                    # int_rewards = torch.mean(int_rewards, dim = 1) / (torch.std(int_rewards, dim = 1) + 1e-5)
+                    # int_rewards = (rnd_pred - rnd_targ) ** 2
+                    # int_rewards = int_rewards.sum(dim=1) / 2
+                    int_rewards = torch.zeros((count_of_processes * count_of_envs))
 
                 # If you selected actions in the main process, your iteration
                 # would last about 0.5 seconds longer (measured on 2 processes)
@@ -200,8 +207,11 @@ class Agent:
                 mem_target_ext_values, mem_target_int_values, mem_ext_advantages, mem_int_advantages, end_games = [], [], [], [], [], [], [], [], []
 
             for connection in connections:
-                observations, masks, log_probs, actions, target_ext_values, target_int_values, ext_advantages, int_advantages, score_of_end_games = connection.recv()     #5 B
+                observations, masks, log_probs, actions, target_ext_values, target_int_values, ext_advantages, int_advantages, score_of_end_games, int_scores_of_end_games = connection.recv()     #5 B
                 
+                with open('debug.csv', 'a+') as f:
+                    f.write(f'{iteration}, "{json.dumps(score_of_end_games)}", "{json.dumps(int_scores_of_end_games)}"\n')
+
                 mem_observations.extend(observations.flatten())
                 mem_masks.append(masks)
                 mem_actions.append(actions)
@@ -222,7 +232,7 @@ class Agent:
             mem_target_int_values = torch.stack(mem_target_int_values).to(self.device).view(-1, 1)
             mem_ext_advantages = torch.stack(mem_ext_advantages).to(self.device).view(-1, 1)
             mem_int_advantages = torch.stack(mem_int_advantages).to(self.device).view(-1, 1)
-            mem_advantages = 5 * mem_ext_advantages + mem_int_advantages
+            mem_advantages = 2 * mem_ext_advantages + mem_int_advantages
             mem_advantages = (mem_advantages - torch.mean(mem_advantages)) / (torch.std(mem_advantages) + 1e-5)
 
             s_policy, s_ext_value, s_int_value, s_entropy, s_rnd = 0, 0, 0, 0, 0
@@ -247,7 +257,7 @@ class Agent:
                     #random loss regularisation, 25% non zero for 128envs, 100% non zero for 32envs
                     prob            = 16.0/(count_of_envs * count_of_processes)
                     random_mask     = torch.rand(loss_rnd.shape).to(loss_rnd.device)
-                    random_mask     = 1.0*(random_mask < prob) 
+                    random_mask     = 1.0*(random_mask < prob)
                     loss_rnd        = (loss_rnd*random_mask).sum() / (random_mask.sum() + 0.00000001)
 
                     ratio = torch.exp(new_log_probs - mem_log_probs[idx])
@@ -270,8 +280,8 @@ class Agent:
                     self.optimizer.step()
 
                     self.rnd_optimizer.zero_grad()
-                    # torch.nn.utils.clip_grad_norm_(self.rnd_model.parameters(), 0.5)
                     loss_rnd.backward()
+                    # torch.nn.utils.clip_grad_norm_(self.rnd_model.parameters(), 0.5)
                     self.rnd_optimizer.step()
 
             lr_scheduler.step()
