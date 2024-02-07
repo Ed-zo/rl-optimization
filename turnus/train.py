@@ -1,11 +1,11 @@
-import inspect
+from distutils.file_util import write_file
+import signal
 import torch
 import torch.nn as nn
 import datetime
 import torch.nn.functional as F
 from ppo_parallel import Agent
 import torch.nn.init as init
-import numpy as np
 from env import Env
 import utils.graph_utils as graph_utils
 from model import GCNPolicy, RNDModel
@@ -23,20 +23,22 @@ if __name__ == '__main__':
 
     graph, optimal_vehicles = graph_utils.load_problem(problem_path)
 
-    env = Env(graph, device, optimal_vehicles)
+    env = Env(graph, optimal_vehicles, device)
 
     net = GCNPolicy(env.state_space(), env.action_space()).to(device)
+    # net.load_state_dict(torch.load('results/models/ppo_problem_2_gcn_4984.pt'))
     rnd_net = RNDModel(env.state_space(), env.action_space()).to(device)
     net.train()
     rnd_net.train()
 
-    agent = Agent(net, rnd_net, device=device, name='ppo_problem_2', path='results/', ext_gamma=1, epsilon=0.2, lr=0.001)
+    agent = Agent(net, rnd_net, device=device, name='p_2_reseting', ext_gamma=1, epsilon=0.2, lr=0.001, override=True)
+    
+    agent.training_description('Resetovanie prostredi vzdy pri novej iteracii')
 
-    agent.train([graph], Env, graph.num_nodes, count_of_iterations=10000, count_of_processes=2, count_of_envs=16, 
-                count_of_steps=env.action_space(), batch_size=632, score_transformer_fn= env.reward_to_score_transformer())
+    signal.signal(signal.SIGINT, agent.stop_training)
+    agent.train([graph, optimal_vehicles], Env, graph.num_nodes, count_of_iterations=10000, count_of_processes=2, count_of_envs=16, 
+                count_of_steps=env.action_space() + (env.MAX_VEHICLES // 2), batch_size=944, score_transformer_fn= env.reward_to_score_transformer())
 
     end_date = datetime.datetime.now()
     print('End time:', end_date)
     print('Tooked', end_date - start_date)
-
-    torch.save(net, 'save.net')

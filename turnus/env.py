@@ -6,7 +6,7 @@ from utils.graph_utils import add_graph_feature
 from utils.utils import obj_to_reward, reward_to_obj
 
 class Env:
-    def __init__(self, graph: Data, device = 'cpu', optimal_vehicles = 6):
+    def __init__(self, graph: Data, optimal_vehicles: int, device = 'cpu'):
         self.graph = graph.clone().to(device)
         self.device = device
         self.vehicleID = 1

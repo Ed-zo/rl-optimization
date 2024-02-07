@@ -1,4 +1,5 @@
 import json
+from datetime import date
 import os
 import numpy as np
 import torch
@@ -8,7 +9,7 @@ from torch.multiprocessing import Process, Pipe, set_start_method
 from torch_geometric.data import Batch
 from utils.graph_store import GraphStore
 from utils.logger import AgentLogger, ScoreLogger
-from utils.utils import RunningStats, flatten_list
+from utils.utils import flatten_list, write_to_file
 # import ipdb
 
 # 1 proces
@@ -116,7 +117,7 @@ def worker(connection, env_params, env_func, count_of_iterations, count_of_envs,
 class Agent:
     def __init__(self, model, rnd_model, ext_gamma=0.997, int_gamma=0.99, epsilon=0.1,
                  coef_value=0.5, coef_entropy=0.001, gae_lambda=0.95,
-                 name='ppo', path='results/', device='cpu', lr = 0.00025):
+                 name='ppo', path='results/', device='cpu', lr = 0.00025, override = False):
 
         self.model = model
         self.rnd_model = rnd_model
@@ -136,8 +137,17 @@ class Agent:
         self.upper_bound = 1 + epsilon
 
         self.name = name
-        self.path = path
+        self.path = os.path.join(path, f'{date.today().strftime("%y%m%d#")}{name}')
+
+        if override == False and os.path.exists(self.path):
+            raise Exception(f'The training {name} already exists')
+
         self.device = device
+        self.train_desc = None
+
+    def training_description(self, description):
+        self.train_desc = description
+        write_to_file(description, f'{self.path}/desc.txt')
 
     def train(self, env_params, env_func, count_of_actions,
               count_of_iterations=10000, count_of_processes=2,
@@ -145,9 +155,10 @@ class Agent:
               batch_size=512, score_transformer_fn = None):
 
         print('Training is starting')
+        self.finish_training = False
 
-        loss_logger = AgentLogger(f'{self.path}/data/{self.name}_loss.csv', ['avg_score', 'policy', 'ext_value', 'int_value', 'entropy', 'rnd', 'lr'])
-        score_logger = ScoreLogger(f'{self.path}/data/{self.name}.csv', score_transformer_fn=score_transformer_fn)
+        loss_logger = AgentLogger(f'{self.path}/loss.csv', ['avg_score', 'policy', 'ext_value', 'int_value', 'entropy', 'rnd', 'lr'])
+        score_logger = ScoreLogger(f'{self.path}/score.csv', score_transformer_fn=score_transformer_fn)
 
         lr_scheduler = LinearLR(self.optimizer, start_factor=1, end_factor=0.0001, total_iters=int(count_of_iterations / 2))
         buffer_size = count_of_processes * count_of_envs * count_of_steps
@@ -164,6 +175,9 @@ class Agent:
             process.start()
 
         for iteration in range(count_of_iterations):
+            if self.finish_training:
+                break
+
             for step in range(count_of_steps):
                 observations = [conn.recv() for conn in connections]                                #1 B
 
@@ -209,7 +223,7 @@ class Agent:
             for connection in connections:
                 observations, masks, log_probs, actions, target_ext_values, target_int_values, ext_advantages, int_advantages, score_of_end_games, int_scores_of_end_games = connection.recv()     #5 B
                 
-                with open('debug.csv', 'a+') as f:
+                with open(os.path.join(self.path, 'scores_debug.csv'), 'a+') as f:
                     f.write(f'{iteration}, "{json.dumps(score_of_end_games)}", "{json.dumps(int_scores_of_end_games)}"\n')
 
                 mem_observations.extend(observations.flatten())
@@ -298,15 +312,23 @@ class Agent:
                 self.save_model(iteration)
 
         print('Training has ended, best avg score is ', score_logger.mva.get_best_avg_score())
+        if self.train_desc is not None:
+            print('Desc:', self.train_desc)
+
+        self.save_model(f'{iteration}_last')
 
         for connection in connections:
             connection.send(1)
         for process in processes:
             process.join()
 
-    def save_model(self, iteration):
-        os.makedirs(f'{self.path}models/', exist_ok=True)
-        torch.save(self.model.state_dict(), f'{self.path}models/{self.name}_{str(iteration)}.pt')
+    def stop_training(self, sig, frame):
+        print('Stoping the training')
+        self.finish_training = True
+
+    def save_model(self, name):
+        os.makedirs(f'{self.path}/models/', exist_ok=True)
+        torch.save(self.model.state_dict(), f'{self.path}/models/iter_{str(name)}.pt')
 
 
     def load_model(self, path):
