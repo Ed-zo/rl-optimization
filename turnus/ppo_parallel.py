@@ -322,7 +322,7 @@ class Agent:
         for process in processes:
             process.join()
 
-    def stop_training(self, sig, frame):
+    def stop_training(self):
         print('Stoping the training')
         self.finish_training = True
 

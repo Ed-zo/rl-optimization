@@ -10,7 +10,6 @@ from env import Env
 import utils.graph_utils as graph_utils
 from model import GCNPolicy, RNDModel
 
-# print(inspect.getfile(GCN))
 
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -31,13 +30,24 @@ if __name__ == '__main__':
     net.train()
     rnd_net.train()
 
-    agent = Agent(net, rnd_net, device=device, name='p_2_reseting', ext_gamma=1, epsilon=0.2, lr=0.001, override=True)
+    agent = Agent(net, rnd_net, device=device, name='p_2_max_vehicles', ext_gamma=1, epsilon=0.2, lr=0.001, override=True)
     
-    agent.training_description('Resetovanie prostredi vzdy pri novej iteracii')
+    agent.training_description('Znizenie MAX VEHICLES na 1/3')
 
-    signal.signal(signal.SIGINT, agent.stop_training)
+    # stop_signal_count = 0
+    # def stop_signal(sig, frame):
+    #     global stop_signal_count
+    #     print('Stoping')
+    #     if stop_signal_count > 1:
+    #         exit()
+
+    #     agent.stop_training()
+    #     stop_signal_count += 1
+
+    # signal.signal(signal.SIGINT, stop_signal)
+
     agent.train([graph, optimal_vehicles], Env, graph.num_nodes, count_of_iterations=10000, count_of_processes=2, count_of_envs=16, 
-                count_of_steps=env.action_space() + (env.MAX_VEHICLES // 2), batch_size=944, score_transformer_fn= env.reward_to_score_transformer())
+                count_of_steps=env.action_space() + (env.MAX_VEHICLES * 2), batch_size=1048, score_transformer_fn= env.reward_to_score_transformer())
 
     end_date = datetime.datetime.now()
     print('End time:', end_date)
