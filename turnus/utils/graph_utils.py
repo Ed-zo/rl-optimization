@@ -36,7 +36,7 @@ class NumberNormEncoder:
 
 def load_graph(path: str):
     nodes, mapping, df = load_node_csv(f'{path}/tasks.csv', 'Index', 
-                               {name: NumberNormEncoder() for name in ['ZastavkaStart', 'ZastavkaFinish', 'CasStart', 'CasFinish', 'Vzdialenost']}, 
+                               {name: NumberNormEncoder() for name in ['ZastavkaStart', 'ZastavkaFinish', 'CasStart', 'CasFinish', 'Vzdialenost', 'Trvanie']}, 
                                sep=';')
 
     edge_connections = build_edge_connections(f'{path}/Tij.csv', df['CasStart'].values, df['CasFinish'].values)
