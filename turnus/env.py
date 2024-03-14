@@ -2,24 +2,26 @@ import torch
 from torch_geometric.data import Data
 from torch_geometric.utils import k_hop_subgraph
 import torch_geometric.transforms as T
+from utils.graph_generator import GraphGenerator
 from utils.graph_utils import add_graph_feature
 from utils.utils import obj_to_reward, reward_to_obj
 
 class Env:
-    def __init__(self, graph: Data, optimal_vehicles: int, device = 'cpu'):
-        self.graph = graph.clone().to(device)
+    def __init__(self, graph_generator: GraphGenerator = None, graph = None, optimal = 4, device = 'cpu'):
+
+        if graph is None and graph_generator is None:
+            raise ValueError('Either graph or graph_generator must be provided')
+
         self.device = device
         self.vehicleID = 1
         self.last_visited_node = 0
-        self.MAX_VEHICLES = graph.num_nodes
-        self.optimal_vehicles = optimal_vehicles
-
-        # Add env state to the graph
-        self.graph, self.flag_visited_index = add_graph_feature(self.graph)
-        self.graph, self.flag_current_node_index = add_graph_feature(self.graph)
-
-        self.starting_depo = 0
-        self.ending_depo = self.graph.num_nodes - 1
+        self.MAX_VEHICLES = graph_generator.size if graph_generator is not None else graph.num_nodes
+        self.graph_generator = graph_generator
+        self.graph = graph
+        self.optimal = optimal
+        
+        if graph is not None:
+            self._extend_graph()
 
         self.reset()
 
@@ -31,10 +33,17 @@ class Env:
     
     def reward_to_score_transformer(self):
         def transform(reward):
-            return reward_to_obj(reward, self.optimal_vehicles, self.MAX_VEHICLES)
+            return reward_to_obj(reward, self.optimal, self.MAX_VEHICLES)
         return transform
 
     def reset(self):
+        if self.graph_generator is not None:
+            self.graph = self.graph_generator.generate()
+            self._extend_graph()
+
+        self.starting_depo = 0
+        self.ending_depo = self.graph.num_nodes - 1
+
         self.graph.x[:, self.flag_visited_index] = 0
 
         self.graph.x[:, self.flag_current_node_index] = 0
@@ -52,9 +61,13 @@ class Env:
 
         return self.graph.clone(), mask
 
+    def _extend_graph(self):
+        # Add env state to the graph
+        self.graph, self.flag_visited_index = add_graph_feature(self.graph)
+        self.graph, self.flag_current_node_index = add_graph_feature(self.graph)
 
     # Return next state, mask, reward, and terminal state
-    def step(self, action) -> (torch.Tensor, torch.Tensor):
+    def step(self, action) -> [torch.Tensor, torch.Tensor, float, bool, None]:
         # We dont need to pick starting depo
         if action == 0:
             raise 'Error'
@@ -96,7 +109,7 @@ class Env:
             terminal = True
 
         if terminal:
-            reward = obj_to_reward(self.vehicleID - 1, self.optimal_vehicles, self.MAX_VEHICLES)
+            reward = obj_to_reward(self.vehicleID - 1, self.optimal, self.MAX_VEHICLES)
 
         return self.graph.clone(), action_mask, reward, terminal, None
         

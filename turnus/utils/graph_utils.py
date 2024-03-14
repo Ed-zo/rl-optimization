@@ -24,7 +24,7 @@ def build_edge_connections(time_matrix_path: str, start_times: np.array, finish_
 
     possible_connection = np.where(transport_times <= start_times)
 
-    return torch.tensor(np.array(possible_connection)).to(torch.long)
+    return torch.from_numpy(np.array(possible_connection)).to(torch.long)
 
 # Normalize and convert dataframe column (Series) into a tensor
 class NumberNormEncoder:

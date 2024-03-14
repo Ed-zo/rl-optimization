@@ -1,15 +1,25 @@
-from distutils.file_util import write_file
-import signal
 import torch
-import torch.nn as nn
 import datetime
 import torch.nn.functional as F
 from ppo_parallel import Agent
-import torch.nn.init as init
+# from env_local_rewards import EnvLocalRewards as Env
 from env import Env
+from utils.graph_generator import GraphGenerator
 import utils.graph_utils as graph_utils
 from model import GCNPolicy, RNDModel
+from torch.multiprocessing import Process, Manager
 
+def get_env(*params) -> Env:
+    def startup(q):
+        q.put(Env(*params))
+
+    manager = Manager()
+    q = manager.Queue()
+    p = Process(target=startup, args=(q,))
+    p.start()
+    p.join()
+
+    return q.get()
 
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -17,22 +27,19 @@ if __name__ == '__main__':
     start_date = datetime.datetime.now()
     print('Start time:', start_date)
 
-    problem = 2
-    problem_path = f'data/{problem}'
+    g_generator = GraphGenerator(problems=[7, 8, 9, 10], size=51)
 
-    graph, optimal_vehicles = graph_utils.load_problem(problem_path)
-
-    env = Env(graph, optimal_vehicles, device)
+    env = get_env(g_generator)
 
     net = GCNPolicy(env.state_space(), env.action_space()).to(device)
-    # net.load_state_dict(torch.load('results/models/ppo_problem_2_gcn_4984.pt'))
+    # net.load_state_dict(torch.load('results/240214#p_2_manualne_ladenie_lr/models/iter_2006.pt'))
     rnd_net = RNDModel(env.state_space(), env.action_space()).to(device)
     net.train()
     rnd_net.train()
 
-    agent = Agent(net, rnd_net, device=device, name='p_2_max_vehicles', ext_gamma=1, epsilon=0.2, lr=0.001, override=True)
+    agent = Agent(net, rnd_net, device=device, name='p_rand_51', ext_gamma=1, epsilon=0.2, lr=0.001, override=True)
     
-    agent.training_description('Znizenie MAX VEHICLES na 1/3')
+    agent.training_description('Nahodne samplovanie grafov o velkosti 51')
 
     # stop_signal_count = 0
     # def stop_signal(sig, frame):
@@ -46,8 +53,8 @@ if __name__ == '__main__':
 
     # signal.signal(signal.SIGINT, stop_signal)
 
-    agent.train([graph, optimal_vehicles], Env, graph.num_nodes, count_of_iterations=10000, count_of_processes=2, count_of_envs=16, 
-                count_of_steps=env.action_space() + (env.MAX_VEHICLES * 2), batch_size=1048, score_transformer_fn= env.reward_to_score_transformer())
+    agent.train([g_generator], Env, env.action_space(), count_of_iterations=10000, count_of_processes=2, count_of_envs=32, 
+                count_of_steps=env.action_space() + env.MAX_VEHICLES, batch_size=1632, score_transformer_fn= env.reward_to_score_transformer())
 
     end_date = datetime.datetime.now()
     print('End time:', end_date)

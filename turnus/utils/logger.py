@@ -19,6 +19,10 @@ class MovingAverageScore:
     def add(self, scores):
         length = len(scores)
         if length > 0:
+            if length > self.memory_size:
+                scores = scores[-self.memory_size:]
+                length = self.memory_size
+
             scores = np.array(scores)
             self.best_score = max(self.best_score, scores.max())
             self.count_of_episodes += length
@@ -91,7 +95,7 @@ class ScoreLogger(Logger):
         self.score_transformer_fn = score_transformer_fn
         self.mva = MovingAverageScore()
 
-    def log(self, iteration, rewards):
+    def log(self, iteration, rewards, infos):
         self.mva.add(rewards)
         episode = self.mva.get_count_of_episodes()
         avg_reward, got_better = self.mva.mean()

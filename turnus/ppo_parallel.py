@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import LinearLR
-from torch.multiprocessing import Process, Pipe, set_start_method
+from torch.multiprocessing import Process, Pipe
 from torch_geometric.data import Batch
 from utils.graph_store import GraphStore
 from utils.logger import AgentLogger, ScoreLogger
@@ -37,6 +37,7 @@ def worker(connection, env_params, env_func, count_of_iterations, count_of_envs,
         mem_non_terminals = torch.ones((count_of_steps, count_of_envs, 1))
         ext_scores = []
         int_scores = []
+        env_infos = []
 
         # Hranie prostredia
         for step in range(count_of_steps):
@@ -56,12 +57,14 @@ def worker(connection, env_params, env_func, count_of_iterations, count_of_envs,
             mem_int_rewards[step] = int_rewards
             
             game_int_rewards += int_rewards.squeeze(-1)
+            infos = []
 
             # Vykonanie jedneho kroku v kazdom prostredi v ramci workera
             for idx in range(count_of_envs):
-                observation, mask, ext_reward, terminal, _ = envs[idx].step(actions[idx, 0].item())
+                observation, mask, ext_reward, terminal, info = envs[idx].step(actions[idx, 0].item())
                 mem_ext_rewards[step, idx, 0] = ext_reward
                 game_ext_rewards[idx] += ext_reward
+                infos.append(info)
                 # if ext_reward < 0:
                     # mem_non_terminals[step, idx, 0] = 0
 
@@ -74,6 +77,8 @@ def worker(connection, env_params, env_func, count_of_iterations, count_of_envs,
                     observation, mask = envs[idx].reset()
                 observations[idx] = observation
                 masks[idx] = mask
+
+            env_infos.append(infos)
 
         connection.send(observations)                                                                           #3 A
         mem_ext_values[step + 1], mem_int_values[step + 1] = connection.recv()                                                                 #4 B
@@ -109,7 +114,7 @@ def worker(connection, env_params, env_func, count_of_iterations, count_of_envs,
             int_values[step] = int_gae + mem_int_values[step]
             int_advantages[step] = int_gae.clone()
 
-        connection.send([mem_observations, mem_masks, mem_log_probs, mem_actions, ext_values, int_values, ext_advantages, int_advantages, ext_scores, int_scores])                                #5 A
+        connection.send([mem_observations, mem_masks, mem_log_probs, mem_actions, ext_values, int_values, ext_advantages, int_advantages, ext_scores, int_scores, env_infos])                                #5 A
     connection.recv()
     connection.close()
 
@@ -218,10 +223,10 @@ class Agent:
                 connections[conn_idx].send((ext_values[conn_idx], int_values[conn_idx]))                                        #4 A
 
             mem_observations, mem_masks, mem_log_probs, mem_actions, \
-                mem_target_ext_values, mem_target_int_values, mem_ext_advantages, mem_int_advantages, end_games = [], [], [], [], [], [], [], [], []
+                mem_target_ext_values, mem_target_int_values, mem_ext_advantages, mem_int_advantages, end_games, env_infos = [], [], [], [], [], [], [], [], [], []
 
             for connection in connections:
-                observations, masks, log_probs, actions, target_ext_values, target_int_values, ext_advantages, int_advantages, score_of_end_games, int_scores_of_end_games = connection.recv()     #5 B
+                observations, masks, log_probs, actions, target_ext_values, target_int_values, ext_advantages, int_advantages, score_of_end_games, int_scores_of_end_games, infos = connection.recv()     #5 B
                 
                 with open(os.path.join(self.path, 'scores_debug.csv'), 'a+') as f:
                     f.write(f'{iteration}, "{json.dumps(score_of_end_games)}", "{json.dumps(int_scores_of_end_games)}"\n')
@@ -235,8 +240,9 @@ class Agent:
                 mem_ext_advantages.append(ext_advantages)
                 mem_int_advantages.append(int_advantages)
                 end_games.extend(score_of_end_games)
+                env_infos.extend(infos)
 
-            episode, avg_score, better_score = score_logger.log(iteration, end_games)
+            episode, avg_score, better_score = score_logger.log(iteration, end_games, env_infos)
 
             mem_observations = Batch.from_data_list(mem_observations).to(self.device)
             mem_masks = torch.stack(mem_masks).to(self.device).bool().view(-1, count_of_actions)
@@ -308,7 +314,7 @@ class Agent:
                             s_rnd / batches_per_iteration,
                             self.optimizer.param_groups[0]['lr'])
 
-            if better_score:
+            if better_score or iteration % 1000 == 0:
                 self.save_model(iteration)
 
         print('Training has ended, best avg score is ', score_logger.mva.get_best_avg_score())

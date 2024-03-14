@@ -2,25 +2,18 @@ import torch
 from torch_geometric.data import Data
 from torch_geometric.utils import k_hop_subgraph
 import torch_geometric.transforms as T
+from utils.graph_generator import GraphGenerator
 from utils.graph_utils import add_graph_feature
 from utils.utils import obj_to_reward, reward_to_obj
 
 class EnvLocalRewards:
-    def __init__(self, graph: Data, optimal_vehicles: int, device = 'cpu'):
-        self.graph = graph.clone().to(device)
+    def __init__(self, graph_generator: GraphGenerator, device = 'cpu'):
         self.device = device
         self.vehicle_ID = 1
         self.vehicle_visited_node_count = 0
         self.last_visited_node = 0
-        self.MAX_VEHICLES = graph.num_nodes
-        self.optimal_vehicles = optimal_vehicles
-
-        # Add env state to the graph
-        self.graph, self.flag_visited_index = add_graph_feature(self.graph)
-        self.graph, self.flag_current_node_index = add_graph_feature(self.graph)
-
-        self.starting_depo = 0
-        self.ending_depo = self.graph.num_nodes - 1
+        self.MAX_VEHICLES = graph_generator.size
+        self.graph_generator = graph_generator
 
         self.reset()
 
@@ -32,16 +25,25 @@ class EnvLocalRewards:
     
     def reward_to_score_transformer(self):
         def transform(reward):
-            return reward * -1 + 1
+            return reward_to_obj(reward, 2, self.MAX_VEHICLES)
         return transform
 
     def reset(self):
+        self.graph = self.graph_generator.generate()
+
+        self.starting_depo = 0
+        self.ending_depo = self.graph.num_nodes - 1
+
+        # Add env state to the graph
+        self.graph, self.flag_visited_index = add_graph_feature(self.graph)
+        self.graph, self.flag_current_node_index = add_graph_feature(self.graph)
+
         self.graph.x[:, self.flag_visited_index] = 0
 
         self.graph.x[:, self.flag_current_node_index] = 0
         self.graph.x[self.starting_depo, self.flag_current_node_index] = 1
 
-        self.vehicle_ID = 1
+        self.vehicleID = 1
         self.last_visited_node = 0
 
         mask = torch.zeros(self.graph.num_nodes, dtype=torch.bool, device=self.device)
