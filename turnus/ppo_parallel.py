@@ -18,7 +18,6 @@ def worker(connection, env_params, env_func, count_of_iterations, count_of_envs,
            count_of_steps, ext_gamma, int_gamma, gae_lambda):
     # ipdb.set_trace()
     envs = [env_func(*env_params) for _ in range(count_of_envs)]
-    # observations = GraphStore((count_of_steps, count_of_envs))
     observations, masks = list(map(list, zip(*[env.reset() for env in envs])))
     masks = torch.stack(masks)
     game_ext_rewards = np.zeros(count_of_envs)
@@ -244,32 +243,32 @@ class Agent:
 
             episode, avg_score, better_score = score_logger.log(iteration, end_games, env_infos)
 
-            mem_observations = Batch.from_data_list(mem_observations).to(self.device)
-            mem_masks = torch.stack(mem_masks).to(self.device).bool().view(-1, count_of_actions)
-            mem_actions = torch.stack(mem_actions).to(self.device).view(-1, 1)
-            mem_log_probs = torch.stack(mem_log_probs).to(self.device).view(-1, 1)
-            mem_target_ext_values = torch.stack(mem_target_ext_values).to(self.device).view(-1, 1)
-            mem_target_int_values = torch.stack(mem_target_int_values).to(self.device).view(-1, 1)
-            mem_ext_advantages = torch.stack(mem_ext_advantages).to(self.device).view(-1, 1)
-            mem_int_advantages = torch.stack(mem_int_advantages).to(self.device).view(-1, 1)
+            mem_observations = Batch.from_data_list(mem_observations)
+            mem_masks = torch.stack(mem_masks).bool().view(-1, count_of_actions)
+            mem_actions = torch.stack(mem_actions).view(-1, 1)
+            mem_log_probs = torch.stack(mem_log_probs).view(-1, 1)
+            mem_target_ext_values = torch.stack(mem_target_ext_values).view(-1, 1)
+            mem_target_int_values = torch.stack(mem_target_int_values).view(-1, 1)
+            mem_ext_advantages = torch.stack(mem_ext_advantages).view(-1, 1)
+            mem_int_advantages = torch.stack(mem_int_advantages).view(-1, 1)
             mem_advantages = 2 * mem_ext_advantages + mem_int_advantages
             mem_advantages = (mem_advantages - torch.mean(mem_advantages)) / (torch.std(mem_advantages) + 1e-5)
 
             s_policy, s_ext_value, s_int_value, s_entropy, s_rnd = 0, 0, 0, 0, 0
 
             for epoch in range(count_of_epochs):
-                perm = torch.randperm(buffer_size, device=self.device).view(-1, batch_size)
+                perm = torch.randperm(buffer_size).view(-1, batch_size)
                 for idx in perm:
-                    obs = Batch.from_data_list(mem_observations[idx])
+                    obs = Batch.from_data_list(mem_observations[idx]).to(self.device)
                     logits, ext_values, int_values = self.model(obs)
-                    logits = torch.where(mem_masks[idx], logits, torch.tensor(-1e+8, device=self.device))
+                    logits = torch.where(mem_masks[idx].to(self.device), logits, torch.tensor(-1e+8, device=self.device))
                     probs = F.softmax(logits, dim=-1)
                     log_probs = F.log_softmax(logits, dim=-1)
-                    new_log_probs = log_probs.gather(1, mem_actions[idx])
+                    new_log_probs = log_probs.gather(1, mem_actions[idx].to(self.device))
 
                     entropy_loss = (log_probs * probs).sum(1, keepdim=True).mean()
-                    ext_value_loss = F.mse_loss(ext_values, mem_target_ext_values[idx])
-                    int_value_loss = F.mse_loss(int_values, mem_target_int_values[idx])
+                    ext_value_loss = F.mse_loss(ext_values, mem_target_ext_values[idx].to(self.device))
+                    int_value_loss = F.mse_loss(int_values, mem_target_int_values[idx].to(self.device))
 
                     rnd_pred, rnd_targ = self.rnd_model(obs)
                     loss_rnd = (rnd_targ - rnd_pred)**2
@@ -280,10 +279,11 @@ class Agent:
                     random_mask     = 1.0*(random_mask < prob)
                     loss_rnd        = (loss_rnd*random_mask).sum() / (random_mask.sum() + 0.00000001)
 
-                    ratio = torch.exp(new_log_probs - mem_log_probs[idx])
-                    surr_policy = ratio * mem_advantages[idx]
+                    ratio = torch.exp(new_log_probs - mem_log_probs[idx].to(self.device))
+                    advantage = mem_advantages[idx].to(self.device)
+                    surr_policy = ratio * advantage
                     surr_clip = torch.clamp(ratio, self.lower_bound, self.upper_bound) \
-                                * mem_advantages[idx]
+                                * advantage
                     policy_loss = - torch.min(surr_policy, surr_clip).mean()
 
                     s_policy += policy_loss.item()
