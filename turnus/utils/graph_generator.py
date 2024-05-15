@@ -16,9 +16,14 @@ class GraphGenerator:
     def generate(self) -> Data:
         graph: Data = self.problems[np.random.choice(len(self.problems))]
 
+        if isinstance(self.size, tuple):
+            num_nodes = np.random.randint(self.size[0], self.size[1])
+        else:
+            num_nodes = self.size
+
         subgraph_nodes = torch.randperm(graph.num_nodes - 2) # -2 because we want to exclude the depot nodes
         subgraph_nodes = subgraph_nodes + 1 # Add 1 to exclude the starting depo
-        subgraph_nodes = torch.cat((subgraph_nodes[:self.size - 2], torch.tensor([0, graph.num_nodes - 1]))) # Add the depot nodes
+        subgraph_nodes = torch.cat((subgraph_nodes[:num_nodes - 2], torch.tensor([0, graph.num_nodes - 1]))) # Add the depot nodes
         subgraph_nodes = subgraph_nodes.unique()    # This mainly sorts the nodes
 
         sub_graph = graph.subgraph(subgraph_nodes)
