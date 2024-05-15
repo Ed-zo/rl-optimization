@@ -1,13 +1,14 @@
 import torch
+import numpy as np
 from torch_geometric.data import Data
 from torch_geometric.utils import k_hop_subgraph
 import torch_geometric.transforms as T
 from utils.graph_generator import GraphGenerator
-from utils.graph_utils import add_graph_feature
+from utils.graph_utils import add_graph_feature, add_node_degree
 from utils.utils import obj_to_reward, reward_to_obj
 
 class Env:
-    def __init__(self, graph_generator: GraphGenerator = None, graph = None, optimal = 4, device = 'cpu'):
+    def __init__(self, graph_generator: GraphGenerator = None, graph = None, optimal = 6, device = 'cpu'):
 
         if graph is None and graph_generator is None:
             raise ValueError('Either graph or graph_generator must be provided')
@@ -15,12 +16,13 @@ class Env:
         self.device = device
         self.vehicleID = 1
         self.last_visited_node = 0
-        self.MAX_VEHICLES = graph_generator.size if graph_generator is not None else graph.num_nodes
+        self.MAX_VEHICLES = np.max(graph_generator.size) if graph_generator is not None else graph.num_nodes
         self.graph_generator = graph_generator
         self.graph = graph
         self.optimal = optimal
         
         if graph is not None:
+            self.graph = self.graph.to(self.device)
             self._extend_graph()
 
         self.reset()
@@ -38,7 +40,7 @@ class Env:
 
     def reset(self):
         if self.graph_generator is not None:
-            self.graph = self.graph_generator.generate()
+            self.graph = self.graph_generator.generate().to(self.device)
             self._extend_graph()
 
         self.starting_depo = 0
@@ -65,6 +67,7 @@ class Env:
         # Add env state to the graph
         self.graph, self.flag_visited_index = add_graph_feature(self.graph)
         self.graph, self.flag_current_node_index = add_graph_feature(self.graph)
+        # self.graph = add_node_degree(self.graph)
 
     # Return next state, mask, reward, and terminal state
     def step(self, action) -> [torch.Tensor, torch.Tensor, float, bool, None]:
