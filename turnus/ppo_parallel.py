@@ -10,6 +10,7 @@ from torch_geometric.data import Batch
 from utils.graph_store import GraphStore
 from utils.logger import AgentLogger, ScoreLogger
 from utils.utils import flatten_list, write_to_file
+from torch_geometric.transforms import ToSparseTensor
 # import ipdb
 
 # 1 proces
@@ -259,7 +260,7 @@ class Agent:
             for epoch in range(count_of_epochs):
                 perm = torch.randperm(buffer_size).view(-1, batch_size)
                 for idx in perm:
-                    obs = Batch.from_data_list(mem_observations[idx]).to(self.device)
+                    obs = ToSparseTensor()(Batch.from_data_list(mem_observations[idx])).to(self.device)
                     logits, ext_values, int_values = self.model(obs)
                     logits = torch.where(mem_masks[idx].to(self.device), logits, torch.tensor(-1e+8, device=self.device))
                     probs = F.softmax(logits, dim=-1)
@@ -270,14 +271,14 @@ class Agent:
                     ext_value_loss = F.mse_loss(ext_values, mem_target_ext_values[idx].to(self.device))
                     int_value_loss = F.mse_loss(int_values, mem_target_int_values[idx].to(self.device))
 
-                    rnd_pred, rnd_targ = self.rnd_model(obs)
-                    loss_rnd = (rnd_targ - rnd_pred)**2
+                    # rnd_pred, rnd_targ = self.rnd_model(obs)
+                    # loss_rnd = (rnd_targ - rnd_pred)**2
 
                     #random loss regularisation, 25% non zero for 128envs, 100% non zero for 32envs
-                    prob            = 16.0/(count_of_envs * count_of_processes)
-                    random_mask     = torch.rand(loss_rnd.shape).to(loss_rnd.device)
-                    random_mask     = 1.0*(random_mask < prob)
-                    loss_rnd        = (loss_rnd*random_mask).sum() / (random_mask.sum() + 0.00000001)
+                    # prob            = 16.0/(count_of_envs * count_of_processes)
+                    # random_mask     = torch.rand(loss_rnd.shape).to(loss_rnd.device)
+                    # random_mask     = 1.0*(random_mask < prob)
+                    # loss_rnd        = (loss_rnd*random_mask).sum() / (random_mask.sum() + 0.00000001)
 
                     ratio = torch.exp(new_log_probs - mem_log_probs[idx].to(self.device))
                     advantage = mem_advantages[idx].to(self.device)
@@ -290,7 +291,7 @@ class Agent:
                     s_ext_value += ext_value_loss.item()
                     s_int_value += int_value_loss.item()
                     s_entropy += entropy_loss.item()
-                    s_rnd += loss_rnd.item()
+                    # s_rnd += loss_rnd.item()
 
                     self.optimizer.zero_grad()
                     loss = policy_loss + self.coef_value * (ext_value_loss + int_value_loss) \
@@ -299,10 +300,10 @@ class Agent:
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.5)
                     self.optimizer.step()
 
-                    self.rnd_optimizer.zero_grad()
-                    loss_rnd.backward()
+                    # self.rnd_optimizer.zero_grad()
+                    # loss_rnd.backward()
                     # torch.nn.utils.clip_grad_norm_(self.rnd_model.parameters(), 0.5)
-                    self.rnd_optimizer.step()
+                    # self.rnd_optimizer.step()
 
             lr_scheduler.step()
 

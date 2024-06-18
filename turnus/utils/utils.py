@@ -2,6 +2,7 @@ import math
 import os
 import numpy as np
 import torch
+from torch.multiprocessing import Process, Manager
 
 def write_to_file(log, filename):
     os.makedirs(os.path.dirname(filename), exist_ok=True)
@@ -75,6 +76,18 @@ def obj_to_reward(vehicles, min_vehicles, max_vehicles):
 
 def reward_to_obj(reward, min_vehicles, max_vehicles):
     return -(max_vehicles - min_vehicles) / 2 * (reward + 1) + max_vehicles
+
+def run_in_child_process(function, *args, **kargs):
+    def wrapper(q):
+        q.put(function(*args, **kargs))
+
+    manager = Manager()
+    q = manager.Queue()
+    p = Process(target=wrapper, args=(q, ))
+    p.start()
+    p.join()
+
+    return q.get()
 
 class RunningStats:
     def __init__(self, shape):

@@ -4,7 +4,7 @@ from torch_geometric.data import Data
 from torch_geometric.utils import k_hop_subgraph
 import torch_geometric.transforms as T
 from utils.graph_generator import GraphGenerator
-from utils.graph_utils import add_graph_feature, add_node_degree
+from utils.graph_utils import add_graph_feature
 from utils.utils import obj_to_reward, reward_to_obj
 
 class Env:
@@ -58,8 +58,9 @@ class Env:
 
         # Mask all nodes that are not connected to the current node
         _, edge_index, _, _ = k_hop_subgraph(0, 1, self.graph.edge_index, flow='target_to_source')
-        mask[edge_index[1]] = 1
+        mask[edge_index] = 1
         mask[self.starting_depo] = 0
+        mask[self.ending_depo] = 0
 
         return self.graph.clone(), mask
 
@@ -67,7 +68,6 @@ class Env:
         # Add env state to the graph
         self.graph, self.flag_visited_index = add_graph_feature(self.graph)
         self.graph, self.flag_current_node_index = add_graph_feature(self.graph)
-        # self.graph = add_node_degree(self.graph)
 
     # Return next state, mask, reward, and terminal state
     def step(self, action) -> [torch.Tensor, torch.Tensor, float, bool, None]:
@@ -98,6 +98,9 @@ class Env:
         # Mask all nodes that are not connected to the current node
         _, edge_index, _, _ = k_hop_subgraph(self.last_visited_node, 1, self.graph.edge_index, flow='target_to_source')
         action_mask[edge_index[1]] = 1
+
+        if self.last_visited_node == 0:
+            action_mask[self.ending_depo] = 0
 
         # Mask all nodes that are already visited
         visited_mask = self.graph.x[:, self.flag_visited_index] > 0
